@@ -1,0 +1,4 @@
+qai_hub_models[bevfusion-det]
+opencv-python
+nuscenes-devkit
+numpy>=2.0,<2.4

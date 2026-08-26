@@ -1,0 +1,5 @@
+packages/*
+nuscenes/*
+checkpoints/*
+__pycache__/*
+.vscode/*
