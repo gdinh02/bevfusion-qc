@@ -5,6 +5,8 @@ import torch
 from PIL import Image
 import numpy as np
 
+import time
+
 # from qai_hub_models.models.bevfusion_det.model import BEVFusion
 from qai_hub_models.models.bevfusion_det.app import BEVFusionApp
 from qai_hub_models.models.bevfusion_det.model import (
@@ -55,11 +57,12 @@ class BEVFusionAppCustom(BEVFusionApp):
                  nms_threshold = 4, 
                  nms_post_max_size = 83,
                  device: torch.device = "cpu", # Device to run the model on
-                 class_filter: None | list[int] = None
+                 class_filter: list[int] | None = None
                  ):
 
         self.device = device
-        self.class_filter = class_filter
+        if class_filter:
+            self.class_filter = torch.tensor(class_filter, device='cpu')
 
         # Casting hack cuz dev be dumdum and use deprecated init, which force the tensor on CPU
         encoder1.__class__ = BEVFusionEncoder1Custom
@@ -158,7 +161,7 @@ class BEVFusionAppCustom(BEVFusionApp):
     
             x = self.encoder3(segment.unsqueeze(0), geom_feats.unsqueeze(0))
             pred_tensor = self.decoder(x)
-    
+
             # unpack predictions into dict
             pred_dicts = []
             start = 0
@@ -182,7 +185,17 @@ class BEVFusionAppCustom(BEVFusionApp):
     
                 pred_dict = dict(zip(head_order, split_tensors, strict=False))
                 pred_dicts.append([pred_dict])
-    
+
+            # Pre NMS filtering
+            if self.class_filter is not None:
+                allowed_classes = self.class_filter.tolist()
+                global_class_idx = 0
+                for i, nc in enumerate(self.num_classes):
+                    for local_channel_idx in range(nc):
+                        if global_class_idx not in allowed_classes:
+                            pred_dicts[i][0]["heatmap"][:, local_channel_idx, :, :] = -1e4
+                        global_class_idx += 1
+
             bboxes, scores, labels = self.get_bboxes(pred_dicts)[0]
 
             if not isinstance(scores, torch.Tensor):
@@ -191,17 +204,17 @@ class BEVFusionAppCustom(BEVFusionApp):
                 labels = torch.tensor(labels, device=self.device)
 
             # Threshold filter
-            conf_indices = torch.tensor(scores) >= self.score_threshold
-            if self.class_filter:
-                class_indices = torch.isin(labels, torch.tensor(self.class_filter, device=self.device))
-                indices = conf_indices & class_indices
-            else:
-                indices = conf_indices
+            conf_indices = scores >= self.score_threshold
+            # if self.class_filter is not None:
+            #     class_indices = torch.isin(labels, self.class_filter)
+            #     indices = conf_indices & class_indices
+            # else:
+            #     indices = conf_indices
                 
             bboxes, scores, labels = (
-                bboxes[indices],
-                scores[indices],
-                labels[indices]
+                bboxes[conf_indices],
+                scores[conf_indices],
+                labels[conf_indices]
             )
 
             return bboxes, scores, labels
