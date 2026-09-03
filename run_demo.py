@@ -75,9 +75,11 @@ def generate_bev_map(bboxes: torch.Tensor, labels: torch.Tensor, max_range_meter
         label = labels_np[i]
         
         # Extract attributes: [x, y, z, w, l, h, yaw, vx, vy]
-        y, x = box[0], box[1]
+        x, y = box[0], box[1]
         w, l = box[3], box[4]
         yaw = box[6]
+
+        theta = -yaw - (np.pi / 2)
         
         # --- STEP 1: Create box corners at origin (0,0) ---
         # The car's length (l) runs along its local X-axis (forward)
@@ -94,20 +96,22 @@ def generate_bev_map(bboxes: torch.Tensor, labels: torch.Tensor, max_range_meter
         ])
         
         # --- STEP 2: Apply rotation (yaw) and translation (x, y) ---
-        c, s = np.cos(yaw), np.sin(yaw)
+        c, s = np.cos(theta), np.sin(theta)
         R = np.array([[c, -s], 
                       [s,  c]])
         
         # Rotate corners and move them to the object's physical location
         physical_corners = corners @ R.T + np.array([x, y])
+        # physical_corners = corners + np.array([x, y])
         
         # --- STEP 3: Map physical meters to image pixels ---
-        # In BEVFusion: Ego X points forward, Ego Y points left
+        # In BEV Map: X points right, Y points forward (up)
         # In Image: X points right, Y points down
-        # Therefore: Image Y corresponds to -Ego X, Image X corresponds to -Ego Y
+        # Therefore: Image X corresponds to +BEV X, Image Y corresponds to -BEV Y
+
         image_corners = np.zeros_like(physical_corners)
-        image_corners[:, 0] = center_x - (physical_corners[:, 1] * pixels_per_meter) # X mapping
-        image_corners[:, 1] = center_y - (physical_corners[:, 0] * pixels_per_meter) # Y mapping
+        image_corners[:, 0] = center_x + (physical_corners[:, 0] * pixels_per_meter) # X mapping (Direct)
+        image_corners[:, 1] = center_y - (physical_corners[:, 1] * pixels_per_meter) # Y mapping (Inverted)
         
         image_corners = image_corners.astype(np.int32)
         
@@ -123,6 +127,22 @@ def generate_bev_map(bboxes: torch.Tensor, labels: torch.Tensor, max_range_meter
         front_midpoint = (image_corners[0] + image_corners[1]) // 2
         center_pixel = np.mean(image_corners, axis=0).astype(np.int32)
         cv2.line(canvas, tuple(center_pixel), tuple(front_midpoint), (0, 0, 255), 2)
+
+        # --- ADDED: Draw Text (x, y, yaw) ---
+        # Extract original physical BEVFusion values (x, y in meters, yaw converted to degrees)
+        phys_x = box[0]
+        phys_y = box[1]
+        phys_yaw_deg = np.degrees(box[6])
+        
+        # Format the string to 1 decimal place to keep it compact
+        text = f"x:{phys_x:.1f} y:{phys_y:.1f} yw:{phys_yaw_deg:.0f} l:{l:.1f} w:{w:.1f}"
+        
+        # Position the text slightly to the top-right of the car's center
+        text_pos = (int(center_pixel[0]) + 8, int(center_pixel[1]) - 8)
+        
+        # Draw text shadow/outline for readability, then the white text
+        cv2.putText(canvas, text, text_pos, cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(canvas, text, text_pos, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1, cv2.LINE_AA)
         
     return canvas 
 
@@ -237,10 +257,11 @@ def main(is_test: bool = False) -> None:
 
             cv2.imshow(window_name, final_combined_image)
 
-            key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKey() & 0xFF
 
             if key == ord("q"):
                 print("User Stopped, Exitting")
+                break
 
             elif key == ord('p'):
                 print("Paused")
