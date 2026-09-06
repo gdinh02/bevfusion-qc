@@ -56,10 +56,22 @@ def get_bevfusion_dict(nusc, sample_token):
     
     return info, images_list, cam_paths_dict
 
-# Example usage:
-# Grab the first sample in the dataset
-# first_sample_token = nusc.sample[0]['token']
-# bevfusion_info = get_bevfusion_dict(nusc, first_sample_token)
 
-# # Print it out as formatted JSON to verify it matches your target structure
-# print(json.dumps(bevfusion_info, indent=4))
+def get_scene_samples(nusc, scene_name):
+    """Yields all samples for a specific scene in chronological order."""
+    
+    # 1. Find the scene dictionary by its name
+    scene = next((s for s in nusc.scene if s['name'] == scene_name), None)
+    if not scene:
+        raise ValueError(f"Scene '{scene_name}' not found in the loaded dataset!")
+        
+    # 2. Start at the first keyframe (sample) of the scene
+    current_token = scene['first_sample_token']
+    
+    # 3. Traverse the linked list until the scene ends
+    while current_token:
+        sample = nusc.get('sample', current_token)
+        yield sample
+        
+        # 'next' contains the token for the next frame, or "" if it's the last frame
+        current_token = sample['next']

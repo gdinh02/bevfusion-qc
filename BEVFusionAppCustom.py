@@ -129,6 +129,9 @@ class BEVFusionAppCustom(BEVFusionApp):
                 cam_paths, inputs_json
             )
 
+            intrins_list = np.array(intrins_list)
+            sensor2keyegos_list = np.array(sensor2keyegos_list)
+
             # Create Tensor on device
             sensor2keyegos = torch.tensor(sensor2keyegos_list, device=self.device).unsqueeze(0)
             inv_intrins = torch.inverse(torch.tensor(intrins_list, device=self.device))
