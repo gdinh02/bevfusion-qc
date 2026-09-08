@@ -354,8 +354,9 @@ def main(is_test: bool = False) -> None:
         class_filter=[0, 1, 2]
     )
 
-    nusc = NuScenes('v1.0-mini', "./nuscenes")
+    # nusc = NuScenes('v1.0-mini', "./nuscenes")
     # nusc = NuScenes('v1.0-trainval', "/home/gdtrinh/nuscenes")
+    nusc = NuScenes('v1.0-trainval', "Z:/dataset/nuscenes")
 
     window_name = "BEVFusion Stream"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -378,8 +379,8 @@ def main(is_test: bool = False) -> None:
         [ 0,  0,  0,  1]
     ], dtype=np.float64)
 
-    for frame_id, sample in enumerate(nusc.sample):
-    # for frame_id, sample in enumerate(get_scene_samples(nusc, "scene-0095")):
+    # for frame_id, sample in enumerate(nusc.sample):
+    for frame_id, sample in enumerate(get_scene_samples(nusc, "scene-0095")):
     
         token = sample['token']
 
