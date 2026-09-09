@@ -24,11 +24,14 @@ from bev_helper import (
 from lane_graph import (
     build_lane_compatibility_graph_from_vehicles,
     get_lane_streams,
-    fit_lane_streams,                # NEW
-    merge_compatible_lane_streams,   # NEW
     ensure_lead_vehicle_stream,      # NEW
     infer_lane_boundaries,           # NEW
-    evaluate_lane_polynomial         # NEW (Needed to draw the curves)
+)
+
+from lane_fitting import (
+    evaluate_lane_polynomial,
+    fit_lane_streams,
+    merge_compatible_lane_streams,
 )
 
 from vehicle_tracking import accumulate_temporal_vehicle_evidence
