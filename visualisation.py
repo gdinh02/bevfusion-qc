@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 
-from lane_fitting import evaluate_lane_polynomial
+from lane_inference.lane_fitting import evaluate_lane_polynomial
 
 from bev_helper import (
     CLASS_NAMES,

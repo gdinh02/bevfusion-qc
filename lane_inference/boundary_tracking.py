@@ -1,11 +1,11 @@
 import numpy as np
 
-from configs import BoundaryTrackingConfig
-from lane_fitting import (
+from lane_inference.configs import BoundaryTrackingConfig
+from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
     lane_polynomial_slope,
 )
-from road_plane import (
+from lane_inference.road_plane import (
     road_plane_y,
     transform_road_plane_to_camera,
 )

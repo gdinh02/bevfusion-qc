@@ -6,36 +6,29 @@ import networkx as nx
 import numpy as np
 from matplotlib.patches import Polygon
 
-from configs import(
+from lane_inference.configs import(
     LaneGraphConfig,
-    TemporalConfig,
     LeadVehicleConfig,
-    LaneFitConfig,
-    LaneMergeConfig,
-    LaneBoundaryConfig,
-    BoundaryTrackingConfig,
-    RoadPlaneConfig,
-    LaneProjectionConfig,
 )
 
-from road_plane import (
+from lane_inference.road_plane import (
     road_plane_y,
     estimate_road_plane,
     transform_road_plane_to_camera,
 )
 
-from geometry import (
+from lane_inference.geometry import (
     axial_angle_diff,
     heading_from_yaw,
     pair_metrics,
 )
 
-from lane_fitting import (
+from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
     lane_polynomial_slope,
 )
 
-from boundary_tracking import(
+from lane_inference.boundary_tracking import(
     transform_lane_boundary_to_camera,
     _boundary_temporal_metrics,
     _smooth_boundary_geometry,
@@ -157,7 +150,6 @@ def build_lane_compatibility_graph(pred_instances_3d, vehicle_label_ids, cfg=Non
     return build_lane_compatibility_graph_from_vehicles(vehicles, cfg=cfg), vehicles
 
 
-
 def get_lane_streams(graph, min_vehicles=2):
     return [
         sorted(component)
@@ -175,8 +167,6 @@ def print_graph_edges(graph):
             f"along={data['along_track']:.1f} m | "
             f"weight={data['weight']:.3f}"
         )
-
-
 
 
 def ensure_lead_vehicle_stream(
@@ -354,8 +344,6 @@ def ensure_lead_vehicle_stream(
     return streams, lane_fits, diagnostic
 
 
-
-
 def plot_projected_lane_boundaries(
     image_path, projected_boundaries, save_path=None, show=True, title=None
 ):
@@ -417,6 +405,7 @@ def plot_projected_lane_boundaries(
         plt.show()
     else:
         plt.close(fig)
+
 
 def _vehicle_rectangle(x, z, yaw, length, width):
     heading = heading_from_yaw(yaw)

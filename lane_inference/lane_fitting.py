@@ -1,7 +1,7 @@
 import math
 import numpy as np
 
-from configs import LaneFitConfig, LaneMergeConfig
+from lane_inference.configs import LaneFitConfig, LaneMergeConfig
 
 '''
 from lane_fitting import (

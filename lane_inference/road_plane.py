@@ -1,6 +1,6 @@
 import numpy as np
 
-from configs import RoadPlaneConfig
+from lane_inference.configs import RoadPlaneConfig
 
 def estimate_road_plane(pred_instances_3d, vehicles, cfg=None):
     if cfg is None:

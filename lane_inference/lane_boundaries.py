@@ -1,7 +1,7 @@
 import numpy as np
 
-from configs import LaneBoundaryConfig
-from lane_fitting import (
+from lane_inference.configs import LaneBoundaryConfig
+from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
     lane_polynomial_slope,
 )

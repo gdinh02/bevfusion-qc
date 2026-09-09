@@ -3,3 +3,5 @@ nuscenes/*
 checkpoints/*
 __pycache__/*
 .vscode/*
+
+*.pyc

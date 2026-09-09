@@ -21,23 +21,23 @@ from bev_helper import (
 )
 
 # --- LANE GRAPH IMPORTS ---
-from lane_graph import (
+from lane_inference.lane_graph import (
     build_lane_compatibility_graph_from_vehicles,
     get_lane_streams,
     ensure_lead_vehicle_stream,      # NEW
 )
 
-from lane_boundaries import infer_lane_boundaries
+from lane_inference.lane_boundaries import infer_lane_boundaries
 
-from lane_fitting import (
+from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
     fit_lane_streams,
     merge_compatible_lane_streams,
 )
 
-from vehicle_tracking import accumulate_temporal_vehicle_evidence
+from lane_inference.vehicle_tracking import accumulate_temporal_vehicle_evidence
 
-from configs import(
+from lane_inference.configs import(
     LaneGraphConfig,
     TemporalConfig,
     LeadVehicleConfig,
@@ -138,8 +138,6 @@ def extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=None):
             "below_standard_score": not passes_standard_score,
         })
     return vehicles
-
-
 
 
 def main(is_test: bool = False) -> None:

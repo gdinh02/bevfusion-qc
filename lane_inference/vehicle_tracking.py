@@ -1,11 +1,11 @@
 import numpy as np
 import math
 
-from configs import(
+from lane_inference.configs import(
     TemporalConfig,
 )
 
-from geometry import axial_angle_diff
+from lane_inference.geometry import axial_angle_diff
 
 '''
 Code to track past vehicle detections and move them into the 
