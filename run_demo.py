@@ -22,13 +22,6 @@ from bev_helper import (
 
 # --- LANE GRAPH IMPORTS ---
 from lane_graph import (
-    LaneGraphConfig,
-    TemporalConfig,
-    LaneFitConfig,          # NEW
-    LaneMergeConfig,        # NEW
-    LeadVehicleConfig,      # NEW
-    LaneBoundaryConfig,     # NEW
-    accumulate_temporal_vehicle_evidence,
     build_lane_compatibility_graph_from_vehicles,
     get_lane_streams,
     fit_lane_streams,                # NEW
@@ -36,6 +29,20 @@ from lane_graph import (
     ensure_lead_vehicle_stream,      # NEW
     infer_lane_boundaries,           # NEW
     evaluate_lane_polynomial         # NEW (Needed to draw the curves)
+)
+
+from vehicle_tracking import accumulate_temporal_vehicle_evidence
+
+from configs import(
+    LaneGraphConfig,
+    TemporalConfig,
+    LeadVehicleConfig,
+    LaneFitConfig,
+    LaneMergeConfig,
+    LaneBoundaryConfig,
+    BoundaryTrackingConfig,
+    RoadPlaneConfig,
+    LaneProjectionConfig,
 )
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
