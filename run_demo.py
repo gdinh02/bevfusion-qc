@@ -139,6 +139,18 @@ def extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=None):
         })
     return vehicles
 
+def yaw_filter(bboxes, direction = np.pi, span = np.pi/12):
+    filter_check = [False] * len(bboxes)
+
+    forward = (direction - span, direction + span)
+    backward = ((direction - np.pi) - span, (direction - np.pi) + span)
+
+    for i, box in enumerate(bboxes):
+        yaw = box[6] % (2 * np.pi)
+        if (yaw > forward[0] and yaw < forward[1]) or (yaw > backward[0] and yaw < backward[1]):
+            filter_check[i] = True
+
+    return filter_check
 
 def main(is_test: bool = False) -> None:
     # Load the model
@@ -208,6 +220,17 @@ def main(is_test: bool = False) -> None:
             cam_paths,
             inputs_json,
         )
+
+        filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
+        bboxes_filtered = [box for i, box in enumerate(bboxes) if filter_check[i]]
+        scores_filtered = [score for i, score in enumerate(scores) if filter_check[i]]
+        labels_filtered = [label for i, label in enumerate(labels) if filter_check[i]]
+
+        # Repack into tensor
+        if len(bboxes_filtered) > 0:
+            bboxes_filtered = torch.stack(bboxes_filtered)
+            scores_filtered = torch.stack(scores_filtered)
+            labels_filtered = torch.stack(labels_filtered)   
 
         # --- PART 1: DATA EXTRACTION ---
         current_vehicles = extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=graph_cfg)
