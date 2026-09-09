@@ -13,8 +13,8 @@ from pyquaternion import Quaternion
 
 sys.path.insert(0, './packages')
 from nuscenes.nuscenes import NuScenes
-from nuscenes_helper import get_bevfusion_dict, get_scene_samples
-from bev_helper import (
+from bevfusion_integration.nuscenes_helper import get_bevfusion_dict, get_scene_samples
+from bevfusion_integration.bev_helper import (
     CLASS_NAMES,
     OBJECT_CLASSES,
     generate_bev_map
@@ -54,7 +54,7 @@ torch.set_default_device(device)
 
 from typing import cast
 
-from BEVFusionAppCustom import (
+from bevfusion_integration.BEVFusionAppCustom import (
     BEVFusionAppCustom,
     BEVFusionEncoder1Custom
 )

@@ -4,7 +4,7 @@ import torch
 
 from lane_inference.lane_fitting import evaluate_lane_polynomial
 
-from bev_helper import (
+from bevfusion_integration.bev_helper import (
     CLASS_NAMES,
     OBJECT_CLASSES,
     generate_bev_map
