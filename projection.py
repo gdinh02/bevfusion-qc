@@ -1,8 +1,8 @@
 import numpy as np
 
-from configs import LaneProjectionConfig
-from lane_fitting import evaluate_lane_polynomial
-from road_plane import road_plane_y
+from lane_inference.configs import LaneProjectionConfig
+from lane_inference.lane_fitting import evaluate_lane_polynomial
+from lane_inference.road_plane import road_plane_y
 
 
 def project_camera_points(points_3d, cam2img):

@@ -165,7 +165,8 @@ def main(is_test: bool = False) -> None:
             labels_filtered = torch.stack(labels_filtered)   
 
         # --- PART 1: DATA EXTRACTION ---
-        current_vehicles = extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=graph_cfg)
+        # current_vehicles = extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=graph_cfg)
+        current_vehicles = extract_vehicles_from_bevfusion(bboxes_filtered, scores_filtered, labels_filtered, cfg=graph_cfg)
 
         # --- EGO-MOTION PREPARATION ---
         # Get ego2global from the sample inputs

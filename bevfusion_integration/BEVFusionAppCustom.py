@@ -221,3 +221,5 @@ class BEVFusionAppCustom(BEVFusionApp):
             )
 
             return bboxes, scores, labels
+
+    
