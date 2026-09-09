@@ -25,8 +25,9 @@ from lane_graph import (
     build_lane_compatibility_graph_from_vehicles,
     get_lane_streams,
     ensure_lead_vehicle_stream,      # NEW
-    infer_lane_boundaries,           # NEW
 )
+
+from lane_boundaries import infer_lane_boundaries
 
 from lane_fitting import (
     evaluate_lane_polynomial,
