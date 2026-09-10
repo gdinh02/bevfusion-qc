@@ -6,3 +6,4 @@ SCENE_NUMBER = "scene-0095"
 
 PIXELS_PER_METER = 10
 VIZ_MODE = True
+DEVICE = 'cuda'

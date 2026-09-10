@@ -4,6 +4,10 @@ import torch
 
 from lane_inference.lane_fitting import evaluate_lane_polynomial
 
+from lane_inference.road_plane import (
+    estimate_road_height_from_boxes
+)
+
 from bevfusion_integration.bev_helper import (
     CLASS_NAMES,
     OBJECT_CLASSES,
@@ -94,33 +98,6 @@ def draw_lane_boundaries_on_bev(canvas, boundaries, pixels_per_meter):
 # ==============================================================================
 # HELPER: PROJECT BOUNDARIES & BOXES TO CAMERAS (BEVFUSION MATRICES)
 # ==============================================================================
-def estimate_road_height_from_boxes(bboxes, inputs_json):
-    """Estimate road height as Z = slope * Y + intercept."""
-    lidar_z_offset = inputs_json.get(
-        "lidar2ego_translation",
-        [0, 0, 1.84]
-    )[2]
-
-    road_slope = 0.0
-    road_intercept = -lidar_z_offset
-
-    if len(bboxes) > 0:
-        forward_dist = bboxes[:, 1]
-        bottom_zs = bboxes[:, 2] - (bboxes[:, 5] / 2)
-
-        if len(bboxes) >= 2:
-            try:
-                road_slope, road_intercept = np.polyfit(
-                    forward_dist,
-                    bottom_zs,
-                    1,
-                )
-            except np.linalg.LinAlgError:
-                road_intercept = float(np.median(bottom_zs))
-        else:
-            road_intercept = float(np.median(bottom_zs))
-
-    return road_slope, road_intercept
 
 
 def project_lane_boundary_to_camera(

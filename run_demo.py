@@ -48,10 +48,11 @@ from lane_inference.configs import(
     LaneProjectionConfig,
 )
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-torch.set_default_device(device)
-
 from typing import cast
+
+from lane_inference.boundary_tracking import (
+    update_temporal_lane_tracks
+)
 
 from bevfusion_integration.BEVFusionAppCustom import (
     BEVFusionAppCustom,
@@ -85,7 +86,16 @@ from demo_settings import (
     DATASET_ROOT,
     DATASET_VERSION,
     SCENE_NUMBER,
+    DEVICE,
 )
+
+boundary_tracking_cfg = BoundaryTrackingConfig(
+    emit_unconfirmed=True,
+    emit_predicted=True,
+)
+boundary_tracker_state = None
+
+torch.set_default_device(DEVICE)
 
 def main(is_test: bool = False) -> None:
     # Load the model
@@ -109,7 +119,7 @@ def main(is_test: bool = False) -> None:
         get_bboxes=heads.get_bboxes,
         model_input_shape=input_shape,
         score_threshold=0.3,
-        device="cuda" if torch.cuda.is_available() else "cpu", # type: ignore
+        device=DEVICE, # type: ignore
         class_filter=[0, 1, 2]
     )
 
