@@ -79,9 +79,13 @@ from visualisation import(
     project_scene_to_cameras,
 )
 
-PIXELS_PER_METER = 10
-VIZ_MODE = True
-
+from demo_settings import (
+    VIZ_MODE,
+    PIXELS_PER_METER,
+    DATASET_ROOT,
+    DATASET_VERSION,
+    SCENE_NUMBER,
+)
 
 def main(is_test: bool = False) -> None:
     # Load the model
@@ -109,9 +113,8 @@ def main(is_test: bool = False) -> None:
         class_filter=[0, 1, 2]
     )
 
-    # nusc = NuScenes('v1.0-mini', "./nuscenes")
-    # nusc = NuScenes('v1.0-trainval', "/home/gdtrinh/nuscenes")
-    nusc = NuScenes('v1.0-trainval', "Z:/dataset/nuscenes")
+    
+    nusc = NuScenes(DATASET_VERSION, DATASET_ROOT)
 
     window_name = "BEVFusion Stream"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -135,7 +138,7 @@ def main(is_test: bool = False) -> None:
     ], dtype=np.float64)
 
     # for frame_id, sample in enumerate(nusc.sample):
-    for frame_id, sample in enumerate(get_scene_samples(nusc, "scene-0095")):
+    for frame_id, sample in enumerate(get_scene_samples(nusc, SCENE_NUMBER)):
     
         token = sample['token']
 
@@ -151,6 +154,7 @@ def main(is_test: bool = False) -> None:
             cam_paths,
             inputs_json,
         )
+        
 
         # filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
         # bboxes_filtered = [box for i, box in enumerate(bboxes) if filter_check[i]]
