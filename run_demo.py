@@ -106,7 +106,7 @@ def main(is_test: bool = False) -> None:
         get_bboxes=heads.get_bboxes,
         model_input_shape=input_shape,
         score_threshold=0.3,
-        device="cuda",
+        device="cuda" if torch.cuda.is_available() else "cpu", # type: ignore
         class_filter=[0, 1, 2]
     )
 
@@ -153,16 +153,26 @@ def main(is_test: bool = False) -> None:
             inputs_json,
         )
 
-        filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
-        bboxes_filtered = [box for i, box in enumerate(bboxes) if filter_check[i]]
-        scores_filtered = [score for i, score in enumerate(scores) if filter_check[i]]
-        labels_filtered = [label for i, label in enumerate(labels) if filter_check[i]]
+        # filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
+        # bboxes_filtered = [box for i, box in enumerate(bboxes) if filter_check[i]]
+        # scores_filtered = [score for i, score in enumerate(scores) if filter_check[i]]
+        # labels_filtered = [label for i, label in enumerate(labels) if filter_check[i]]
 
-        # Repack into tensor
-        if len(bboxes_filtered) > 0:
-            bboxes_filtered = torch.stack(bboxes_filtered)
-            scores_filtered = torch.stack(scores_filtered)
-            labels_filtered = torch.stack(labels_filtered)   
+        # # Repack into tensor
+        # if len(bboxes_filtered) > 0:
+        #     bboxes_filtered = torch.stack(bboxes_filtered)
+        #     scores_filtered = torch.stack(scores_filtered)
+        #     labels_filtered = torch.stack(labels_filtered)   
+
+        mask = torch.tensor(
+            yaw_filter(bboxes, np.pi, np.pi / 8),
+            dtype=torch.bool,
+            device=bboxes.device,
+        )
+
+        bboxes_filtered = bboxes[mask]
+        scores_filtered = scores[mask]
+        labels_filtered = labels[mask]
 
         # --- PART 1: DATA EXTRACTION ---
         # current_vehicles = extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=graph_cfg)

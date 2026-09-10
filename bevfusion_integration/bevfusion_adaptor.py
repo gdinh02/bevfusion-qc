@@ -66,14 +66,19 @@ def extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=None):
     return vehicles
 
 def yaw_filter(bboxes, direction = np.pi, span = np.pi/12):
-    filter_check = [False] * len(bboxes)
+    # filter_check = [False] * len(bboxes)
 
-    forward = (direction - span, direction + span)
-    backward = ((direction - np.pi) - span, (direction - np.pi) + span)
+    # forward = (direction - span, direction + span)
+    # backward = ((direction - np.pi) - span, (direction - np.pi) + span)
 
-    for i, box in enumerate(bboxes):
-        yaw = box[6] % (2 * np.pi)
-        if (yaw > forward[0] and yaw < forward[1]) or (yaw > backward[0] and yaw < backward[1]):
-            filter_check[i] = True
+    # for i, box in enumerate(bboxes):
+    #     yaw = box[6] % (2 * np.pi)
+    #     if (yaw > forward[0] and yaw < forward[1]) or (yaw > backward[0] and yaw < backward[1]):
+    #         filter_check[i] = True
 
-    return filter_check
+    # return filter_check
+    return [
+        abs((float(box[6]) - direction + np.pi / 2) % np.pi - np.pi / 2)
+        <= span
+        for box in bboxes
+    ]
