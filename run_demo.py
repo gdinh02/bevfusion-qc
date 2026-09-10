@@ -149,11 +149,10 @@ def main(is_test: bool = False) -> None:
         inputs_json = info
 
         # predict
-        bboxes, scores, labels = app.predict_3d_boxes_from_images(
-            images,
-            cam_paths,
-            inputs_json,
-        )
+        with torch.inference_mode():
+            bboxes, scores, labels = app.predict_3d_boxes_from_images(
+                images, cam_paths, inputs_json
+            )
         
 
         # filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
