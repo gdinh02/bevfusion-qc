@@ -3,7 +3,6 @@ import sys
 from PIL.ImageMath import imagemath_convert
 from shapely import boundary
 
-from sympy import true
 import torch
 import numpy as np
 import cv2
@@ -122,7 +121,7 @@ def main(is_test: bool = False) -> None:
     graph_cfg = LaneGraphConfig()
     fit_cfg = LaneFitConfig()
     merge_cfg = LaneMergeConfig()
-    lead_cfg = LeadVehicleConfig(enabled=true)
+    lead_cfg = LeadVehicleConfig(enabled=True)
     boundary_cfg = LaneBoundaryConfig()
 
     history = deque(maxlen=temporal_cfg.history_frames)
@@ -218,7 +217,7 @@ def main(is_test: bool = False) -> None:
         )
 
         streams, lane_fits, lead_diagnostic = ensure_lead_vehicle_stream(
-            graph, streams, lane_fits, current_frame_index=0, cfg=lead_cfg
+            graph, streams, lane_fits, current_frame_index=frame_id, cfg=lead_cfg
         )
 
         # LANE BOUDARY GENERATION
