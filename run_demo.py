@@ -48,6 +48,8 @@ from lane_inference.configs import(
     LaneProjectionConfig,
 )
 
+from lane_inference.road_plane import estimate_road_height_from_boxes
+
 from typing import cast
 
 from lane_inference.boundary_tracking import (
@@ -89,11 +91,6 @@ from demo_settings import (
     DEVICE,
 )
 
-boundary_tracking_cfg = BoundaryTrackingConfig(
-    emit_unconfirmed=True,
-    emit_predicted=True,
-)
-boundary_tracker_state = None
 
 torch.set_default_device(DEVICE)
 
@@ -138,6 +135,12 @@ def main(is_test: bool = False) -> None:
     boundary_cfg = LaneBoundaryConfig()
 
     history = deque(maxlen=temporal_cfg.history_frames)
+        
+    boundary_tracking_cfg = BoundaryTrackingConfig(
+        emit_unconfirmed=True,
+        emit_predicted=True,
+    )
+    boundary_tracker_state = None
 
     # Matrix mapping FCOS3D Camera coordinates back to Standard nuScenes Ego
     pseudo_cam_to_ego = np.array([
@@ -163,18 +166,19 @@ def main(is_test: bool = False) -> None:
             bboxes, scores, labels = app.predict_3d_boxes_from_images(
                 images, cam_paths, inputs_json
             )
-        
 
-        # filter_check = yaw_filter(bboxes, np.pi, np.pi/8)
-        # bboxes_filtered = [box for i, box in enumerate(bboxes) if filter_check[i]]
-        # scores_filtered = [score for i, score in enumerate(scores) if filter_check[i]]
-        # labels_filtered = [label for i, label in enumerate(labels) if filter_check[i]]
+        road_slope, road_intercept = estimate_road_height_from_boxes(
+            bboxes.detach().cpu().numpy(),
+            inputs_json,
+        )
 
-        # # Repack into tensor
-        # if len(bboxes_filtered) > 0:
-        #     bboxes_filtered = torch.stack(bboxes_filtered)
-        #     scores_filtered = torch.stack(scores_filtered)
-        #     labels_filtered = torch.stack(labels_filtered)   
+        road_plane = {
+            "coefficients": np.array(
+                [0.0, -road_slope, -road_intercept],
+                dtype=np.float64,
+            ),
+            "model": "bevfusion_height_line",
+        }
 
         mask = torch.tensor(
             yaw_filter(bboxes, np.pi, np.pi / 8),
@@ -234,7 +238,18 @@ def main(is_test: bool = False) -> None:
         )
 
         # LANE BOUDARY GENERATION
-        boundaries = infer_lane_boundaries(lane_fits, cfg=boundary_cfg)
+        raw_boundaries = infer_lane_boundaries(lane_fits, cfg=boundary_cfg)
+
+        boundaries, boundary_tracker_state, boundary_events = (
+            update_temporal_lane_tracks(
+                boundary_tracker_state,
+                raw_boundaries,
+                pseudo_cam_to_global,
+                road_plane,
+                frame_id,
+                cfg=boundary_tracking_cfg,
+            )
+        )
 
         # print(f"Sample {token} done | Vehicles: {len(current_vehicles)} | Temporal Tracks: {len(tracks)} | Lane Streams: {len(streams)}")
         print(f"Sample {token} done | Vehicles: {len(current_vehicles)} | Lane Streams: {len(streams)}")
