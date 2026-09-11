@@ -22,9 +22,9 @@ class LaneGraphConfig:
     lead_score_thresh: float = 0.15
     lead_candidate_max_abs_x: float = 3.0
     max_depth: float = 60.0
-    max_cross_track: float = 1.6
-    max_yaw_diff_deg: float = 15.0
-    max_along_track: float = 30.0
+    max_cross_track: float = 1.0
+    max_yaw_diff_deg: float = 10.0
+    max_along_track: float = 20.0
     sigma_cross_track: float = 0.8
     sigma_yaw_deg: float = 8.0
 
@@ -62,13 +62,13 @@ class LaneFitConfig:
 @dataclass
 class LaneMergeConfig:
     # Merge fragmented fits only when their longitudinal ranges are close.
-    max_longitudinal_gap: float = 8.0
+    max_longitudinal_gap: float = 6.0
 
     # Maximum centreline disagreement over the overlap/gap comparison interval.
-    max_lateral_disagreement: float = 1.0
+    max_lateral_disagreement: float = 0.6
 
     # Maximum tangent-angle disagreement between the two fitted centrelines.
-    max_tangent_diff_deg: float = 10.0
+    max_tangent_diff_deg: float = 6.0
 
     # Number of points used when comparing two fitted stream fragments.
     sample_count: int = 15
