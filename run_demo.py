@@ -131,7 +131,7 @@ def main(is_test: bool = False) -> None:
     graph_cfg = LaneGraphConfig()
     fit_cfg = LaneFitConfig()
     merge_cfg = LaneMergeConfig()
-    lead_cfg = LeadVehicleConfig(enabled=True)
+    lead_cfg = LeadVehicleConfig(enabled=False)
     boundary_cfg = LaneBoundaryConfig()
 
     history = deque(maxlen=temporal_cfg.history_frames)

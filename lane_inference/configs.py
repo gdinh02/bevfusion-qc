@@ -53,7 +53,7 @@ class LeadVehicleConfig:
 
 @dataclass
 class LaneFitConfig:
-    degree: int = 2
+    degree: int = 1
     residual_threshold: float = 0.75
     max_trials: int = 200
     random_seed: int = 0
