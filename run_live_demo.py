@@ -12,11 +12,14 @@ basis: if inference is already behind schedule, the frame is shown immediately.
 --fps overrides that cadence. The saved MP4 preserves the exported timestamps
 (or the FPS override).
 
-python run_live_demo.py --input Z:/dataset/scene-0095 --output demo.mp4
+python run_live_demo.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo.mp4
 
 python run_live_demo.py --input example --output demo.mp4 --fps 10
 """
 from __future__ import annotations
+
+# import warnings
+# warnings.filterwarnings("error", message="To copy construct from a tensor")
 
 import argparse
 import math
@@ -123,6 +126,11 @@ def parse_args(argv=None):
         "--no-display",
         action="store_true",
         help="Save without opening the live display window",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable detailed lane-inference diagnostics",
     )
     args = parser.parse_args(argv)
 
@@ -258,7 +266,7 @@ class LanePipeline:
         self.fit_cfg = LaneFitConfig()
         self.merge_cfg = LaneMergeConfig()
         self.lead_cfg = LeadVehicleConfig(enabled=False)
-        self.boundary_cfg = LaneBoundaryConfig()
+        self.boundary_cfg = LaneBoundaryConfig(verbose=False)
         self.tracking_cfg = BoundaryTrackingConfig(
             emit_unconfirmed=True,
             emit_predicted=True,
@@ -293,6 +301,7 @@ class LanePipeline:
             dtype=torch.bool,
             device=bboxes.device,
         )
+
         vehicles = extract_vehicles_from_bevfusion(
             bboxes[mask],
             scores[mask],

@@ -98,6 +98,8 @@ class LaneBoundaryConfig:
     # Avoid drawing a provisional boundary on top of a stronger paired one
     provisional_dedup_distance: float = 0.75
 
+    verbose: bool = False
+
 
 @dataclass
 class BoundaryTrackingConfig:

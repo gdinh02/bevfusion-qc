@@ -1,6 +1,9 @@
 import numpy as np
 
-from lane_inference.configs import LaneBoundaryConfig
+from lane_inference.configs import (
+    LaneBoundaryConfig
+)
+
 from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
     lane_polynomial_slope,
@@ -14,8 +17,11 @@ def _average_polynomials(a, b):
 
 
 def infer_lane_boundaries(lane_fits, cfg=None):
+
     if cfg is None:
         cfg = LaneBoundaryConfig()
+
+    debug_print = print if cfg.verbose else lambda *args, **kwargs: None
 
     boundaries = []
     paired_boundaries = []
@@ -77,14 +83,14 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             z_max = min(a["z_max"], b["z_max"])
             overlap = z_max - z_min
 
-            print(
+            debug_print(
                 f"\nS{a['stream_id']} vs S{b['stream_id']}: "
                 f"z=[{z_min:.1f}, {z_max:.1f}], "
                 f"overlap={overlap:.2f} m"
             )
 
             if overlap < cfg.min_overlap:
-                print(
+                debug_print(
                     f"  -> rejected: insufficient overlap "
                     f"({overlap:.2f} < {cfg.min_overlap:.2f} m)"
                 )
@@ -99,20 +105,20 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             median_x_gap = float(np.median(np.abs(delta)))
 
             if abs(median_delta) < 1e-6:
-                print("  -> rejected: median lateral separation is effectively zero")
+                debug_print("  -> rejected: median lateral separation is effectively zero")
                 continue
 
             sign_consistency = float(
                 np.mean(np.sign(delta) == np.sign(median_delta))
             )
 
-            print(
+            debug_print(
                 f"  median x-gap={median_x_gap:.2f} m | "
                 f"left/right consistency={sign_consistency:.2%}"
             )
 
             if sign_consistency < 0.9:
-                print(
+                debug_print(
                     "  -> rejected: streams do not maintain a consistent "
                     "left/right ordering"
                 )
@@ -133,7 +139,7 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             median_width = float(np.median(widths))
             width_std = float(np.std(widths))
 
-            print(
+            debug_print(
                 f"  normal lane width={median_width:.2f} m | "
                 f"std={width_std:.2f} m"
             )
@@ -141,7 +147,7 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             if not (
                 cfg.min_lane_width <= median_width <= cfg.max_lane_width
             ):
-                print(
+                debug_print(
                     f"  -> rejected: lane width outside allowed range "
                     f"[{cfg.min_lane_width:.2f}, {cfg.max_lane_width:.2f}] m"
                 )
@@ -190,7 +196,7 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             paired_boundaries.append(boundary)
             add_boundary(boundary)
 
-            print(
+            debug_print(
                 f"  -> ACCEPTED paired boundary "
                 f"(confidence={confidence:.2f})"
             )
@@ -205,7 +211,7 @@ def infer_lane_boundaries(lane_fits, cfg=None):
     else:
         estimated_lane_width = cfg.default_lane_width
 
-    print(
+    debug_print(
         f"\nLane width used for single-stream inference: "
         f"{estimated_lane_width:.2f} m"
     )
@@ -219,8 +225,8 @@ def infer_lane_boundaries(lane_fits, cfg=None):
                 )
             )
         )
-        print("Single-stream provisional boundaries: disabled")
-        print(f"\nTotal inferred lane boundaries: {len(boundaries)}")
+        debug_print("Single-stream provisional boundaries: disabled")
+        debug_print(f"\nTotal inferred lane boundaries: {len(boundaries)}")
         return boundaries
 
     # ---------------------------------------------------------
@@ -242,21 +248,21 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             continue
 
         if cfg.single_stream_only_when_no_paired and paired_boundaries:
-            print(
+            debug_print(
                 f"S{fit['stream_id']}: single-stream fallback suppressed "
                 "because paired-stream boundaries exist"
             )
             continue
 
         if inlier_count < cfg.single_stream_min_inliers:
-            print(
+            debug_print(
                 f"S{fit['stream_id']}: not enough inliers for "
                 f"single-stream boundaries ({inlier_count})"
             )
             continue
 
         if span < cfg.single_stream_min_span:
-            print(
+            debug_print(
                 f"S{fit['stream_id']}: fitted span too short "
                 f"({span:.2f} m)"
             )
@@ -266,14 +272,14 @@ def infer_lane_boundaries(lane_fits, cfg=None):
             fit.get("has_track_info")
             and fit.get("num_tracks", 0) < cfg.single_stream_min_tracks
         ):
-            print(
+            debug_print(
                 f"S{fit['stream_id']}: insufficient distinct tracks "
                 f"({fit.get('num_tracks', 0)})"
             )
             continue
 
         if rmse > cfg.single_stream_max_rmse:
-            print(
+            debug_print(
                 f"S{fit['stream_id']}: fit RMSE too high "
                 f"({rmse:.2f} m)"
             )
@@ -369,7 +375,7 @@ def infer_lane_boundaries(lane_fits, cfg=None):
         }
         add_boundary(right_boundary)
 
-        print(
+        debug_print(
             f"S{fit['stream_id']}: added provisional left/right boundaries | "
             f"tracks={fit.get('num_tracks', 0)} | "
             f"support={fit.get('track_support', 'unknown')} | "
@@ -385,6 +391,6 @@ def infer_lane_boundaries(lane_fits, cfg=None):
         )
     )
 
-    print(f"\nTotal inferred lane boundaries: {len(boundaries)}")
+    debug_print(f"\nTotal inferred lane boundaries: {len(boundaries)}")
     return boundaries
 

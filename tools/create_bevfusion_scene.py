@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export one nuScenes scene for gdinh02/bevfusion-qc camera-only inference.
 
-python tools/create_bevfusion_scene.py --scene scene-0095 --root Z:/dataset/nuscenes --output-base Z:/dataset/
+python tools/create_bevfusion_scene.py --scene scene-0064 --root Z:/dataset/nuscenes --output-base Z:/dataset/
 
 Usage (run in an environment with nuscenes-devkit installed):
     python create_bevfusion_scene.py --scene scene-0095 \
