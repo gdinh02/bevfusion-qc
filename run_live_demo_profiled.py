@@ -2,7 +2,7 @@
 """Profile the existing BEVFusion live demo stage by stage.
 
 
-    python run_live_demo_profiled.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo_profiled.mp4s
+    python run_live_demo_profiled.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo_profiled.mp4
 """
 from __future__ import annotations
 
