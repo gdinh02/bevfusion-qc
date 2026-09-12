@@ -53,7 +53,7 @@ class LeadVehicleConfig:
 
 @dataclass
 class LaneFitConfig:
-    degree: int = 1
+    degree: int = 2
     residual_threshold: float = 0.75
     max_trials: int = 200
     random_seed: int = 0
@@ -86,7 +86,7 @@ class LaneBoundaryConfig:
 
     # Single-stream boundary inference
     enable_single_stream_boundaries: bool = True
-    single_stream_only_when_no_paired: bool =True
+    single_stream_only_when_no_paired: bool = False
     default_lane_width: float = 3.5
     single_stream_min_inliers: int = 3
     single_stream_max_rmse: float = 0.75

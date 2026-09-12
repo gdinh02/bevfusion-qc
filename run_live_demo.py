@@ -268,8 +268,8 @@ class LanePipeline:
         self.lead_cfg = LeadVehicleConfig(enabled=False)
         self.boundary_cfg = LaneBoundaryConfig(verbose=False)
         self.tracking_cfg = BoundaryTrackingConfig(
-            emit_unconfirmed=True,
-            emit_predicted=True,
+            emit_unconfirmed=False,
+            emit_predicted=False,
         )
         self.history = deque(maxlen=self.temporal_cfg.history_frames)
         self.tracker_state = None
