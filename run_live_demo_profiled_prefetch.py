@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-"""Profile BEVFusion while streaming rendered frames directly to FFmpeg.
+"""BEVFusion live demo with CPU frame prefetch/preprocessing and direct MP4 output.
 
-Place this file beside ``run_live_demo.py``, ``bevfusion_profiler.py`` and
+Place beside ``run_live_demo.py``, ``bevfusion_profiler_prefetch.py`` and
 ``lane_profile_optimized.py`` in the repository root.
 
-This is based on ``run_live_demo_profiled_laneopt.py`` but removes the temporary
-PNG sequence entirely. Rendered BGR frames are queued to a background writer
-thread, which feeds raw video directly to FFmpeg while the next frame is being
-processed.
-
-Timestamp behaviour is preserved:
-  * with ``--fps``, FFmpeg receives a constant-rate raw-video stream;
-  * without ``--fps``, explicit per-frame PTS values are assigned from the
-    exported scene timestamps, preserving variable frame timing.
+The prefetch worker decodes and preprocesses frame N+1 while the main thread
+runs BEVFusion + lane inference + rendering for frame N. Neural-network forward
+passes remain on the main thread.
 
 Example:
-    python run_live_demo_profiled_streaming.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo_profiled_opt.mp4 --no-display
+    python run_live_demo_profiled_prefetch.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo_profiled_opt.mp4 --no-display
+
 """
 from __future__ import annotations
 
@@ -25,6 +20,7 @@ import subprocess
 import threading
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 
@@ -33,7 +29,10 @@ import numpy as np
 import torch
 
 import run_live_demo as base
-from bevfusion_profiler import ProfiledBEVFusionAppCustom
+from bevfusion_profiler_prefetch import (
+    PreparedBEVFusionInputs,
+    ProfiledPrefetchBEVFusionAppCustom,
+)
 from lane_profile_optimized import (
     ProfiledOptimizedLanePipeline,
     vectorized_yaw_filter,
@@ -41,9 +40,11 @@ from lane_profile_optimized import (
 
 
 PROFILE_ORDER = (
+    "prefetch_wait",
     "load",
     "camera_geometry_cpu",
     "preprocess_cpu",
+    "prepare_wall",
     "input_setup_h2d_gpu",
     "encoder1_gpu",
     "encoder2_gpu",
@@ -52,8 +53,8 @@ PROFILE_ORDER = (
     "decoder_gpu",
     "decode_nms_filter_gpu",
     "postprocess_wall",
-    "model_wall",
     "inference_wall",
+    "model_work_total",
     "yaw_filter_gpu",
     "detections_to_cpu",
     "lane_road_plane",
@@ -80,11 +81,113 @@ def _ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000.0
 
 
+@dataclass
+class PrefetchedFrame:
+    frame_id: int
+    frame: dict
+    inputs_json: dict
+    images: list
+    cam_paths: dict[str, str]
+    prepared: PreparedBEVFusionInputs
+    profile: dict[str, float]
+
+
+class FramePrefetcher:
+    """Decode + preprocess future frames on one background CPU worker."""
+
+    _END = object()
+
+    def __init__(
+        self,
+        app: ProfiledPrefetchBEVFusionAppCustom,
+        root: Path,
+        camera_order: tuple[str, ...],
+        frames: list[dict],
+        depth: int = 2,
+    ) -> None:
+        self.app = app
+        self.root = root
+        self.camera_order = camera_order
+        self.frames = frames
+        self.queue: queue.Queue[object] = queue.Queue(maxsize=max(1, depth))
+        self.stop_event = threading.Event()
+        self.error: BaseException | None = None
+        self._thread = threading.Thread(
+            target=self._worker,
+            name="bevfusion-frame-prefetch",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _put(self, item: object) -> bool:
+        while not self.stop_event.is_set():
+            try:
+                self.queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def _worker(self) -> None:
+        try:
+            for frame_id, frame in enumerate(self.frames):
+                if self.stop_event.is_set():
+                    break
+
+                profile: dict[str, float] = {}
+
+                t0 = time.perf_counter()
+                inputs_json, images, cam_paths = base.load_frame(
+                    self.root,
+                    self.camera_order,
+                    frame,
+                )
+                profile["load"] = _ms(t0)
+
+                prepared = self.app.prepare_frame_inputs(
+                    images,
+                    cam_paths,
+                    inputs_json,
+                )
+                profile.update(prepared.profile)
+
+                item = PrefetchedFrame(
+                    frame_id=frame_id,
+                    frame=frame,
+                    inputs_json=inputs_json,
+                    images=images,
+                    cam_paths=cam_paths,
+                    prepared=prepared,
+                    profile=profile,
+                )
+                if not self._put(item):
+                    return
+
+            self._put(self._END)
+        except BaseException as exc:
+            self.error = exc
+            self._put(self._END)
+
+    def get(self) -> PrefetchedFrame | None:
+        item = self.queue.get()
+        try:
+            if item is self._END:
+                if self.error is not None:
+                    raise RuntimeError("Frame prefetch worker failed") from self.error
+                return None
+            assert isinstance(item, PrefetchedFrame)
+            return item
+        finally:
+            self.queue.task_done()
+
+    def close(self) -> None:
+        self.stop_event.set()
+        self._thread.join(timeout=5.0)
+
+
 def _setpts_expression(pts_us: list[int]) -> str:
-    """Build an FFmpeg setpts expression mapping frame number to microseconds."""
     if not pts_us:
         raise ValueError("pts_us must not be empty")
-
     expression = str(int(pts_us[-1]))
     for index in range(len(pts_us) - 2, -1, -1):
         expression = f"if(eq(N,{index}),{int(pts_us[index])},{expression})"
@@ -92,7 +195,7 @@ def _setpts_expression(pts_us: list[int]) -> str:
 
 
 def _choose_encoder(ffmpeg: str) -> list[str]:
-    """Use the same preferred encoder as the original demo when available."""
+    """Prefer ultrafast x264 to avoid competing with the inference pipeline."""
     result = subprocess.run(
         [ffmpeg, "-hide_banner", "-encoders"],
         capture_output=True,
@@ -105,15 +208,6 @@ def _choose_encoder(ffmpeg: str) -> list[str]:
 
 
 class DirectFFmpegWriter:
-    """Background raw-BGR -> FFmpeg -> MP4 writer.
-
-    ``submit`` normally returns almost immediately because FFmpeg encoding occurs
-    on a separate thread. The queue is bounded so a pathologically slow encoder
-    cannot consume unbounded RAM; if FFmpeg falls behind far enough, ``submit``
-    will provide intentional back-pressure and that time will appear in the
-    ``video_submit`` profile stage.
-    """
-
     _STOP = object()
 
     def __init__(
@@ -134,8 +228,6 @@ class DirectFFmpegWriter:
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.width = width
         self.height = height
-        self.timestamps = timestamps
-        self.fps = fps
         self.queue: queue.Queue[object] = queue.Queue(maxsize=queue_size)
         self.error: BaseException | None = None
         self.frames_written = 0
@@ -166,17 +258,13 @@ class DirectFFmpegWriter:
             output_timing_args = ["-fps_mode", "cfr"]
             self._duplicate_final_frame = False
         else:
-            # Input cadence is arbitrary because setpts below replaces the PTS.
             command += ["-framerate", "30", "-i", "pipe:0"]
-
             durations = base.frame_durations(timestamps, None)
             first_ts = timestamps[0]
             pts_us = [
                 int(round((timestamp - first_ts) * 1_000_000.0))
                 for timestamp in timestamps
             ]
-            # As in the old concat writer, append the last frame a second time
-            # so the final real frame receives its intended display duration.
             final_end_us = int(
                 round(
                     (timestamps[-1] - first_ts + durations[-1])
@@ -184,10 +272,13 @@ class DirectFFmpegWriter:
                 )
             )
             pts_us.append(final_end_us)
-
             expression = _setpts_expression(pts_us)
-            vf = f"settb=expr=1/1000000,setpts='{expression}'"
-            output_timing_args = ["-vf", vf, "-fps_mode", "vfr"]
+            output_timing_args = [
+                "-vf",
+                f"settb=expr=1/1000000,setpts='{expression}'",
+                "-fps_mode",
+                "vfr",
+            ]
             self._duplicate_final_frame = True
 
         command += output_timing_args
@@ -249,12 +340,12 @@ class DirectFFmpegWriter:
 
             assert self._process.stdin is not None
             self._process.stdin.close()
-            stderr = self._process.stderr.read() # type: ignore
+            stderr = self._process.stderr.read() # type:ignore
             return_code = self._process.wait()
             if return_code != 0:
                 message = stderr.decode("utf-8", errors="replace").strip()
                 raise RuntimeError(f"ffmpeg failed: {message}")
-        except BaseException as exc:  # surfaced on submit/close in main thread
+        except BaseException as exc:
             self.error = exc
             try:
                 if self._process.stdin is not None and not self._process.stdin.closed:
@@ -278,7 +369,6 @@ class DirectFFmpegWriter:
         if self._closed:
             return self.output, (time.perf_counter() - self._start_time) * 1000.0
         self._closed = True
-
         self.queue.put(self._STOP)
         self._thread.join()
         if self.error is not None:
@@ -292,7 +382,6 @@ def snapshot_detections_once(
     labels: torch.Tensor,
     timings: dict[str, float],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Vectorise yaw filtering, then make one reusable CPU snapshot."""
     use_cuda_events = bboxes.is_cuda and torch.cuda.is_available()
 
     yaw_start = yaw_end = None
@@ -322,24 +411,15 @@ def snapshot_detections_once(
     return bboxes_np, scores_np, labels_np, yaw_mask_np
 
 
-def render_frame_profiled(
-    app,
-    lane_pipeline,
-    frame_id,
-    images,
-    cam_paths,
-    inputs_json,
+def render_prefetched_frame(
+    app: ProfiledPrefetchBEVFusionAppCustom,
+    lane_pipeline: ProfiledOptimizedLanePipeline,
+    item: PrefetchedFrame,
 ):
-    timings: dict[str, float] = {}
+    timings = dict(item.profile)
 
-    t0 = time.perf_counter()
     with torch.inference_mode():
-        bboxes, scores, labels = app.predict_3d_boxes_from_images(
-            images,
-            cam_paths,
-            inputs_json,
-        )
-    timings["inference_wall"] = _ms(t0)
+        bboxes, scores, labels = app.predict_prepared(item.prepared)
     timings.update(app.last_profile)
 
     bboxes_np, scores_np, labels_np, yaw_mask_np = snapshot_detections_once(
@@ -350,8 +430,8 @@ def render_frame_profiled(
     )
 
     graph, streams, boundaries, vehicle_count = lane_pipeline.process(
-        frame_id,
-        inputs_json,
+        item.frame_id,
+        item.inputs_json,
         bboxes_np,
         scores_np,
         labels_np,
@@ -381,12 +461,12 @@ def render_frame_profiled(
     t0 = time.perf_counter()
     cameras = base.project_scene_to_cameras(
         app,
-        images,
-        cam_paths,
+        item.images,
+        item.cam_paths,
         boundaries,
         bboxes_np,
         labels_np,
-        inputs_json,
+        item.inputs_json,
     )
     timings["camera_projection"] = _ms(t0)
 
@@ -430,7 +510,12 @@ def print_summary(samples: list[dict[str, float]], warmup_frames: int = 3) -> No
     if "compute_wall" in values:
         avg_wall = mean(values["compute_wall"])
         if avg_wall > 0:
-            print(f"Estimated compute throughput: {1000.0 / avg_wall:.2f} FPS")
+            print(f"Estimated pipelined throughput: {1000.0 / avg_wall:.2f} FPS")
+
+    print(
+        "Note: load/prepare timings run on the prefetch worker and overlap the "
+        "main-thread compute_wall; do not add them to compute_wall."
+    )
 
 
 def main(argv=None):
@@ -442,42 +527,37 @@ def main(argv=None):
         f"timestamp span {timestamps[-1] - timestamps[0]:.3f}s"
     )
 
-    base.BEVFusionAppCustom = ProfiledBEVFusionAppCustom
+    base.BEVFusionAppCustom = ProfiledPrefetchBEVFusionAppCustom
     app = base.build_app()
     lane_pipeline = ProfiledOptimizedLanePipeline()
+    prefetcher = FramePrefetcher(app, root, camera_order, frames, depth=2) # type:ignore
 
     display_enabled = not args.no_display
-    window = "BEVFusion Live (profiled direct MP4)"
+    window = "BEVFusion Live (profiled prefetch)"
     wall_start = None
     profile_samples: list[dict[str, float]] = []
     writer: DirectFFmpegWriter | None = None
-    output: Path | None = None
 
     if display_enabled:
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
         print("Live controls: p = pause/resume, q = stop")
 
     try:
-        for frame_id, frame in enumerate(frames):
+        while True:
             compute_start = time.perf_counter()
 
             t0 = time.perf_counter()
-            inputs_json, images, cam_paths = base.load_frame(
-                root,
-                camera_order,
-                frame,
-            )
-            load_ms = _ms(t0)
+            item = prefetcher.get()
+            prefetch_wait_ms = _ms(t0)
+            if item is None:
+                break
 
-            combined, vehicles, streams, timings = render_frame_profiled(
-                app,
+            combined, vehicles, streams, timings = render_prefetched_frame(
+                app, # type:ignore
                 lane_pipeline,
-                frame_id,
-                images,
-                cam_paths,
-                inputs_json,
-            )
-            timings["load"] = load_ms
+                item,
+            ) 
+            timings["prefetch_wait"] = prefetch_wait_ms
 
             if writer is None:
                 writer = DirectFFmpegWriter(
@@ -493,7 +573,7 @@ def main(argv=None):
             timings["compute_wall"] = _ms(compute_start)
 
             profile_samples.append(timings)
-            print_frame_profile(frame_id, timings)
+            print_frame_profile(item.frame_id, timings)
 
             if display_enabled:
                 if wall_start is None:
@@ -501,7 +581,7 @@ def main(argv=None):
                 wall_start, keep_running = base.show_live_frame(
                     window,
                     combined,
-                    frame_id,
+                    item.frame_id,
                     timestamps,
                     args.fps,
                     wall_start,
@@ -511,8 +591,8 @@ def main(argv=None):
                     break
 
             print(
-                f"[{frame_id + 1:>3}/{len(frames)}] "
-                f"{frame['token']} | vehicles: {vehicles} | "
+                f"[{item.frame_id + 1:>3}/{len(frames)}] "
+                f"{item.frame['token']} | vehicles: {vehicles} | "
                 f"lane streams: {streams}",
                 flush=True,
             )
@@ -526,7 +606,10 @@ def main(argv=None):
         output, writer_wall_ms = writer.close()
         writer = None
         print(f"FFmpeg finalisation wait: {_ms(finalize_start):.1f} ms")
-        print(f"Direct MP4 writer wall span: {writer_wall_ms:.1f} ms (overlapped with compute)")
+        print(
+            f"Direct MP4 writer wall span: {writer_wall_ms:.1f} ms "
+            "(overlapped with compute)"
+        )
 
         timing = (
             f"{args.fps:g} FPS"
@@ -536,6 +619,7 @@ def main(argv=None):
         print(f"Saved {output} using {timing}")
 
     finally:
+        prefetcher.close()
         if writer is not None:
             try:
                 writer.close()
