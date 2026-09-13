@@ -33,7 +33,7 @@ from bevfusion_profiler_prefetch import (
     PreparedBEVFusionInputs,
     ProfiledPrefetchBEVFusionAppCustom,
 )
-from lane_profile_optimized import ProfiledOptimizedLanePipeline
+from pipeline import ProfiledOptimizedLanePipeline
 from bevfusion_integration.bevfusion_adaptor import vectorized_yaw_filter
 from lane_inference.configs import (
     BEVFusionConfig,

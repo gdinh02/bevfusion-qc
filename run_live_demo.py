@@ -29,7 +29,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections import deque
 from pathlib import Path
 from statistics import median
 from typing import cast
@@ -38,7 +37,6 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from pyquaternion import Quaternion
 
 sys.path.insert(0, "./packages")
 
@@ -49,6 +47,10 @@ from bevfusion_integration.BEVFusionAppCustom import (
 from bevfusion_integration.bev_helper import generate_bev_map
 
 from demo_settings import DEVICE, PIXELS_PER_METER
+
+from lane_inference.configs import (
+    BEVFusionConfig,
+)
 
 from qai_hub_models.models.bevfusion_det.model import (
     BEVFusion,
@@ -62,7 +64,6 @@ from visualisation import (
     project_scene_to_cameras,
 )
 from pipeline import (
-    ProfiledOptimizedLanePipeline,
     LanePipeline
 )
 
@@ -233,7 +234,7 @@ def build_app():
         task_heads=heads.task_heads,
         get_bboxes=heads.get_bboxes,
         model_input_shape=(enc1_shape[-2], enc1_shape[-1]),
-        score_threshold=0.3,
+        score_threshold=BEVFusionConfig.score_threshold,
         device=DEVICE,  # type: ignore[arg-type]
         class_filter=[0, 1, 2],
     )
