@@ -53,15 +53,6 @@ from bevfusion_integration.bevfusion_adaptor import (
 )
 from demo_settings import DEVICE, PIXELS_PER_METER
 from lane_inference.boundary_tracking import update_temporal_lane_tracks
-from lane_inference.configs import (
-    BoundaryTrackingConfig,
-    LaneBoundaryConfig,
-    LaneFitConfig,
-    LaneGraphConfig,
-    LaneMergeConfig,
-    LeadVehicleConfig,
-    TemporalConfig,
-)
 from lane_inference.lane_boundaries import infer_lane_boundaries
 from lane_inference.lane_fitting import (
     fit_lane_streams,

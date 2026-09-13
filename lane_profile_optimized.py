@@ -53,8 +53,8 @@ class ProfiledOptimizedLanePipeline:
         self.graph_cfg = LaneGraphConfig()
         self.fit_cfg = LaneFitConfig()
         self.merge_cfg = LaneMergeConfig()
-        self.lead_cfg = LeadVehicleConfig(enabled=False)
-        self.boundary_cfg = LaneBoundaryConfig(verbose=False)
+        self.lead_cfg = LeadVehicleConfig()
+        self.boundary_cfg = LaneBoundaryConfig()
         self.tracking_cfg = BoundaryTrackingConfig(
             emit_unconfirmed=False,
             emit_predicted=False,
