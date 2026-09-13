@@ -13,6 +13,7 @@ from bevfusion_integration.bevfusion_adaptor import (
 )
 from lane_inference.boundary_tracking import update_temporal_lane_tracks
 from lane_inference.configs import (
+    BEVFusionConfig,
     BoundaryTrackingConfig,
     LaneBoundaryConfig,
     LaneFitConfig,
@@ -47,16 +48,14 @@ def _as_numpy(value: torch.Tensor | np.ndarray) -> np.ndarray:
 
 class LanePipeline:
     def __init__(self):
+        self.bevfusion_cfg = BEVFusionConfig()
         self.temporal_cfg = TemporalConfig()
         self.graph_cfg = LaneGraphConfig()
         self.fit_cfg = LaneFitConfig()
         self.merge_cfg = LaneMergeConfig()
         self.lead_cfg = LeadVehicleConfig()
         self.boundary_cfg = LaneBoundaryConfig()
-        self.tracking_cfg = BoundaryTrackingConfig(
-            emit_unconfirmed=False,
-            emit_predicted=False,
-        )
+        self.tracking_cfg = BoundaryTrackingConfig()
 
         self.history = deque(maxlen=self.temporal_cfg.history_frames)
         self.tracker_state = None
@@ -110,8 +109,8 @@ class LanePipeline:
         if yaw_mask is None:
             yaw_mask = vectorized_yaw_filter(
                 bboxes,
-                np.pi,
-                np.pi / 8,
+                self.bevfusion_cfg.yaw_filter_direction,
+                self.bevfusion_cfg.yaw_filter_span,
             ) # type:ignore
         yaw_mask = np.asarray(yaw_mask, dtype=bool)
 

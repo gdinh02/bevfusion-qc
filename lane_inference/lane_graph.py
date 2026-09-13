@@ -150,7 +150,7 @@ def build_lane_compatibility_graph(pred_instances_3d, vehicle_label_ids, cfg=Non
     return build_lane_compatibility_graph_from_vehicles(vehicles, cfg=cfg), vehicles
 
 
-def get_lane_streams(graph, min_vehicles=2):
+def get_lane_streams(graph, min_vehicles):
     return [
         sorted(component)
         for component in nx.connected_components(graph)

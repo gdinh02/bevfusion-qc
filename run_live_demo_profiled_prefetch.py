@@ -35,7 +35,9 @@ from bevfusion_profiler_prefetch import (
 )
 from lane_profile_optimized import ProfiledOptimizedLanePipeline
 from bevfusion_integration.bevfusion_adaptor import vectorized_yaw_filter
-
+from lane_inference.configs import (
+    BEVFusionConfig,
+)
 
 PROFILE_ORDER = (
     "prefetch_wait",
@@ -388,7 +390,11 @@ def snapshot_detections_once(
         yaw_end = torch.cuda.Event(enable_timing=True)
         yaw_start.record()
 
-    yaw_mask = vectorized_yaw_filter(bboxes, np.pi, np.pi / 8)
+    yaw_mask = vectorized_yaw_filter(
+            bboxes,
+            BEVFusionConfig.yaw_filter_direction,
+            BEVFusionConfig.yaw_filter_span,
+        )
 
     if use_cuda_events:
         yaw_end.record() # type:ignore
