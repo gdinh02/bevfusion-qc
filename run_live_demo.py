@@ -85,6 +85,10 @@ from visualisation import (
     draw_lane_graph_on_bev,
     project_scene_to_cameras,
 )
+from pipeline import (
+    ProfiledOptimizedLanePipeline,
+    LanePipeline
+)
 
 CAMERAS = (
     "CAM_FRONT",
@@ -257,119 +261,6 @@ def build_app():
         device=DEVICE,  # type: ignore[arg-type]
         class_filter=[0, 1, 2],
     )
-
-
-class LanePipeline:
-    def __init__(self):
-        self.temporal_cfg = TemporalConfig()
-        self.graph_cfg = LaneGraphConfig()
-        self.fit_cfg = LaneFitConfig()
-        self.merge_cfg = LaneMergeConfig()
-        self.lead_cfg = LeadVehicleConfig(enabled=False)
-        self.boundary_cfg = LaneBoundaryConfig(verbose=False)
-        self.tracking_cfg = BoundaryTrackingConfig(
-            emit_unconfirmed=False,
-            emit_predicted=False,
-        )
-        self.history = deque(maxlen=self.temporal_cfg.history_frames)
-        self.tracker_state = None
-        self.pseudo_cam_to_ego = np.array(
-            [
-                [0, 0, 1, 0],
-                [-1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, 0, 1],
-            ],
-            dtype=np.float64,
-        )
-
-    def process(self, frame_id, inputs_json, bboxes, scores, labels):
-        slope, intercept = estimate_road_height_from_boxes(
-            bboxes.detach().cpu().numpy(),
-            inputs_json,
-        )
-        road_plane = {
-            "coefficients": np.array(
-                [0.0, -slope, -intercept],
-                dtype=np.float64,
-            ),
-            "model": "bevfusion_height_line",
-        }
-
-        mask = torch.tensor(
-            yaw_filter(bboxes, np.pi, np.pi / 8),
-            dtype=torch.bool,
-            device=bboxes.device,
-        )
-
-        vehicles = extract_vehicles_from_bevfusion(
-            bboxes[mask],
-            scores[mask],
-            labels[mask],
-            cfg=self.graph_cfg,
-        )
-
-        ego2global = np.eye(4)
-        ego2global[:3, :3] = Quaternion(
-            inputs_json["ego2global_rotation"]
-        ).rotation_matrix
-        ego2global[:3, 3] = np.asarray(
-            inputs_json["ego2global_translation"]
-        )
-        pseudo_cam_to_global = ego2global @ self.pseudo_cam_to_ego
-
-        self.history.append(
-            {
-                "frame_index": frame_id,
-                "vehicles": vehicles,
-                "cam_to_global": pseudo_cam_to_global,
-            }
-        )
-
-        temporal_vehicles, _ = accumulate_temporal_vehicle_evidence(
-            list(self.history),
-            reference_record_index=-1,
-            cfg=self.temporal_cfg,
-        )
-
-        graph = build_lane_compatibility_graph_from_vehicles(
-            temporal_vehicles,
-            cfg=self.graph_cfg,
-        )
-        streams = get_lane_streams(graph, min_vehicles=2)
-        fits = fit_lane_streams(graph, streams, cfg=self.fit_cfg)
-
-        streams, fits, _ = merge_compatible_lane_streams(
-            graph,
-            streams,
-            lane_fits=fits,
-            merge_cfg=self.merge_cfg,
-            fit_cfg=self.fit_cfg,
-        )
-
-        streams, fits, _ = ensure_lead_vehicle_stream(
-            graph,
-            streams,
-            fits,
-            current_frame_index=frame_id,
-            cfg=self.lead_cfg,
-        )
-
-        raw_boundaries = infer_lane_boundaries(
-            fits,
-            cfg=self.boundary_cfg,
-        )
-
-        boundaries, self.tracker_state, _ = update_temporal_lane_tracks(
-            self.tracker_state,
-            raw_boundaries,
-            pseudo_cam_to_global,
-            road_plane,
-            frame_id,
-            cfg=self.tracking_cfg,
-        )
-
-        return graph, streams, boundaries, len(vehicles)
 
 
 def resize_keep_ratio(image: np.ndarray, target_height: int) -> np.ndarray:
