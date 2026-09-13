@@ -11,7 +11,7 @@ class BEVFusionConfig:
     """Tunable BEVFusion post-processing settings used before lane inference."""
 
     # Minimum BEVFusion confidence retained before downstream lane processing.
-    score_threshold: float = 0.30
+    score_threshold: float = 0.50
 
     # BEVFusion NMS settings.
     nms_threshold: float = 4.0
@@ -120,13 +120,13 @@ class LaneMergeConfig:
 class LeadVehicleConfig:
     """Controls the optional lead-vehicle lane-stream fallback."""
 
-    enabled: bool = True
+    enabled: bool = False
     max_abs_x: float = 3.0
     max_depth: float = 30.0
     max_forward_yaw_diff_deg: float = 45.0
     near_depth: float = 3.0
-    forward_extension: float = 8.0
-    max_abs_slope: float = 0.75
+    forward_extension: float = 16.0
+    max_abs_slope: float = 0.45
 
 
 # ==============================================================================

@@ -11,12 +11,6 @@ from lane_inference.configs import(
     LeadVehicleConfig,
 )
 
-from lane_inference.road_plane import (
-    road_plane_y,
-    estimate_road_plane,
-    transform_road_plane_to_camera,
-)
-
 from lane_inference.geometry import (
     axial_angle_diff,
     heading_from_yaw,
@@ -25,14 +19,6 @@ from lane_inference.geometry import (
 
 from lane_inference.lane_fitting import (
     evaluate_lane_polynomial,
-    lane_polynomial_slope,
-)
-
-from lane_inference.boundary_tracking import(
-    transform_lane_boundary_to_camera,
-    _boundary_temporal_metrics,
-    _smooth_boundary_geometry,
-    update_temporal_lane_tracks,
 )
 
 def extract_vehicles_from_prediction(pred_instances_3d, vehicle_label_ids, cfg=None):
