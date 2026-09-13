@@ -7,7 +7,10 @@ import numpy as np
 import torch
 from pyquaternion import Quaternion
 
-from bevfusion_integration.bevfusion_adaptor import extract_vehicles_from_bevfusion
+from bevfusion_integration.bevfusion_adaptor import (
+    extract_vehicles_from_bevfusion,
+    vectorized_yaw_filter,
+)
 from lane_inference.boundary_tracking import update_temporal_lane_tracks
 from lane_inference.configs import (
     BoundaryTrackingConfig,
@@ -35,30 +38,6 @@ from lane_inference.vehicle_tracking import accumulate_temporal_vehicle_evidence
 def _ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000.0
 
-
-def vectorized_yaw_filter(
-    bboxes: torch.Tensor | np.ndarray,
-    direction: float = np.pi,
-    span: float = np.pi / 12,
-) -> torch.Tensor | np.ndarray:
-    """Vectorised equivalent of bevfusion_adaptor.yaw_filter.
-
-    For CUDA tensors, this stays entirely on the GPU and returns a CUDA boolean
-    tensor.  It avoids the original Python loop's ``float(box[6])`` conversion,
-    which synchronises the GPU once per detection.
-    """
-    if torch.is_tensor(bboxes):
-        yaw = bboxes[:, 6]
-        direction_t = yaw.new_tensor(direction)
-        half_pi = yaw.new_tensor(np.pi / 2)
-        pi = yaw.new_tensor(np.pi)
-        wrapped = torch.remainder(yaw - direction_t + half_pi, pi) - half_pi
-        return torch.abs(wrapped) <= span
-
-    bboxes_np = np.asarray(bboxes)
-    yaw = bboxes_np[:, 6]
-    wrapped = np.remainder(yaw - direction + np.pi / 2, np.pi) - np.pi / 2
-    return np.abs(wrapped) <= span
 
 
 class ProfiledOptimizedLanePipeline:

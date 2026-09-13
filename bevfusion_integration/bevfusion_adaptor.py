@@ -82,3 +82,27 @@ def yaw_filter(bboxes, direction = np.pi, span = np.pi/12):
         <= span
         for box in bboxes
     ]
+
+def vectorized_yaw_filter(
+    bboxes: torch.Tensor | np.ndarray,
+    direction: float = np.pi,
+    span: float = np.pi / 12,
+) -> torch.Tensor | np.ndarray:
+    """Vectorised equivalent of bevfusion_adaptor.yaw_filter.
+
+    For CUDA tensors, this stays entirely on the GPU and returns a CUDA boolean
+    tensor.  It avoids the original Python loop's ``float(box[6])`` conversion,
+    which synchronises the GPU once per detection.
+    """
+    if torch.is_tensor(bboxes):
+        yaw = bboxes[:, 6]
+        direction_t = yaw.new_tensor(direction)
+        half_pi = yaw.new_tensor(np.pi / 2)
+        pi = yaw.new_tensor(np.pi)
+        wrapped = torch.remainder(yaw - direction_t + half_pi, pi) - half_pi
+        return torch.abs(wrapped) <= span
+
+    bboxes_np = np.asarray(bboxes)
+    yaw = bboxes_np[:, 6]
+    wrapped = np.remainder(yaw - direction + np.pi / 2, np.pi) - np.pi / 2
+    return np.abs(wrapped) <= span

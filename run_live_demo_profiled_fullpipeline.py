@@ -31,7 +31,9 @@ import torch
 
 import run_live_demo as base
 from bevfusion_profiler_prefetch import ProfiledPrefetchBEVFusionAppCustom
-from lane_profile_optimized import ProfiledOptimizedLanePipeline
+from lane_profile_optimized import (
+    ProfiledOptimizedLanePipeline,
+)
 from run_live_demo_profiled_prefetch import (
     DirectFFmpegWriter,
     FramePrefetcher,
