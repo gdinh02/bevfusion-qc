@@ -7,3 +7,5 @@ __pycache__/*
 *.pyc
 *.code-workspace
 *.mp4
+
+test.py
