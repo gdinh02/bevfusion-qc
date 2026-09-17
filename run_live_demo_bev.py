@@ -153,7 +153,7 @@ def load_scene(folder: Path):
 
     meta = payload.get("metainfo", {})
     frames = payload.get("data_list", [])
-    if meta.get("schema") != "bevfusion-qc.scene" or meta.get("schema_version") != 1:
+    if meta.get("schema") != "bevfusion-qc.scene" or meta.get("schema_version") != 2:
         raise ValueError(
             "Unsupported scene PKL; re-export it with create_bevfusion_scene.py"
         )
