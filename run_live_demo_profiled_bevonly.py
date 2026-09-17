@@ -26,7 +26,7 @@ import cv2
 import numpy as np
 import torch
 
-import run_live_demo as base
+import run_live_demo_bev as base
 from bevfusion_profiler_prefetch import ProfiledPrefetchBEVFusionAppCustom
 from pipeline import ProfiledOptimizedLanePipeline
 from run_live_demo_profiled_prefetch import (
@@ -220,23 +220,23 @@ def render_inference_result(
     bev = base.generate_bev_map(
         bboxes=torch.from_numpy(result.bboxes),
         labels=torch.from_numpy(result.labels),
-        pixels_per_meter=33,
+        pixels_per_meter=base.PIXELS_PER_METER,
         max_range_meters=20
     )
     bev = base.draw_lane_graph_on_bev(
         bev,
         graph,
         streams,
-        pixels_per_meter=33,
+        pixels_per_meter=base.PIXELS_PER_METER,
     )
     bev = base.draw_lane_boundaries_on_bev(
         bev,
         boundaries,
-        33,
+        base.PIXELS_PER_METER,
     )
     
     # 3. Crop BEV to exactly 20m x 20m
-    target_size_px = int(20.0 * 33)
+    target_size_px = int(20.0 * base.PIXELS_PER_METER)
     h, w = bev.shape[:2]
     
     # start_y = max(0, (h - target_size_px) // 2)
