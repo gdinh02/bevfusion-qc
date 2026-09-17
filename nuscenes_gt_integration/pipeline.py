@@ -111,6 +111,11 @@ class GTLanePipeline:
         self.last_road_plane = None
         self.last_current_vehicles = []
         self.last_temporal_vehicles = []
+        self.last_graph = None
+        self.last_streams = []
+        self.last_fits = []
+        self.last_raw_boundaries = []
+        self.last_boundaries = []
 
     def reset(self):
         """
@@ -130,6 +135,11 @@ class GTLanePipeline:
         self.last_road_plane = None
         self.last_current_vehicles = []
         self.last_temporal_vehicles = []
+        self.last_graph = None
+        self.last_streams = []
+        self.last_fits = []
+        self.last_raw_boundaries = []
+        self.last_boundaries = []
 
     def _handle_scene_boundary(
         self,
@@ -334,17 +344,31 @@ class GTLanePipeline:
         )
 
         # -----------------------------------------------------
-        # Evaluation diagnostics
+        # Evaluation / validation diagnostics
         # -----------------------------------------------------
 
         self.last_tracks = tracks
         self.last_road_plane = road_plane
-        self.last_current_vehicles = (
-            current_vehicles
-        )
-        self.last_temporal_vehicles = (
-            temporal_vehicles
-        )
+        self.last_current_vehicles = list(current_vehicles)
+        self.last_temporal_vehicles = list(temporal_vehicles)
+
+        self.last_graph = graph
+        self.last_streams = [
+            list(stream)
+            for stream in streams
+        ]
+        self.last_fits = [
+            dict(fit)
+            for fit in fits
+        ]
+        self.last_raw_boundaries = [
+            dict(boundary)
+            for boundary in raw_boundaries
+        ]
+        self.last_boundaries = [
+            dict(boundary)
+            for boundary in boundaries
+        ]
 
         return (
             graph,
