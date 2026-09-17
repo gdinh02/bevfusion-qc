@@ -79,7 +79,7 @@ class LaneGraphConfig:
 
     # Exception: a single tracked vehicle may form a stream if its
     # ego-motion-compensated observations span this much longitudinal distance.
-    single_track_min_z_span: float = 3.0
+    single_track_min_z_span: float = 1.0
 
 
 # ==============================================================================

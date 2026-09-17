@@ -24,16 +24,16 @@ from pyquaternion import Quaternion
 #     lane_z =  lidar_x
 # ---------------------------------------------------------------------------
 
-LANE_FROM_LIDAR = np.array(
+LANE_FROM_EGO = np.array(
     [
-        [0.0, -1.0, 0.0],
-        [0.0,  0.0, -1.0],
-        [1.0,  0.0, 0.0],
+        [0.0, -1.0,  0.0],  # right = -ego left
+        [0.0,  0.0, -1.0],  # down  = -ego up
+        [1.0,  0.0,  0.0],  # forward = ego forward
     ],
     dtype=np.float64,
 )
 
-LIDAR_FROM_LANE = LANE_FROM_LIDAR.T
+EGO_FROM_LANE = LANE_FROM_EGO.T
 
 
 GT_CLASS_LABELS = {
@@ -68,35 +68,24 @@ def _make_transform(
     return transform
 
 
-def get_lane_to_global(
-    inputs_json: dict,
-) -> np.ndarray:
+def get_lane_to_global(inputs_json: dict) -> np.ndarray:
     """
-    Return the homogeneous transform from the canonical lane frame
-    to the nuScenes global frame.
+    Canonical lane frame:
+        +x = right
+        +y = down
+        +z = ego-forward
 
-    The canonical lane frame is rigidly attached to LIDAR_TOP for the
-    current keyframe but uses the camera-like x-right/y-down/z-forward
-    axis convention expected by the downstream lane code.
+    The lane frame is aligned with the ego body, NOT raw LIDAR_TOP axes.
     """
-    lidar_to_ego = _make_transform(
-        inputs_json["lidar2ego_translation"],
-        inputs_json["lidar2ego_rotation"],
-    )
-
     ego_to_global = _make_transform(
         inputs_json["ego2global_translation"],
         inputs_json["ego2global_rotation"],
     )
 
-    lane_to_lidar = np.eye(4, dtype=np.float64)
-    lane_to_lidar[:3, :3] = LIDAR_FROM_LANE
+    lane_to_ego = np.eye(4, dtype=np.float64)
+    lane_to_ego[:3, :3] = EGO_FROM_LANE
 
-    return (
-        ego_to_global
-        @ lidar_to_ego
-        @ lane_to_lidar
-    )
+    return ego_to_global @ lane_to_ego
 
 
 def get_global_to_lane(
