@@ -63,10 +63,21 @@ def fit_lane_stream(graph, stream, cfg=None):
             if len(nodes) == sample_size
             else rng.choice(len(nodes), size=sample_size, replace=False)
         )
-        if np.unique(z[sample_idx]).size < sample_size:
+        sample_z = z[sample_idx]
+        sample_x = x[sample_idx]
+
+        if np.unique(sample_z).size < sample_size:
             continue
+
+        if np.ptp(sample_z) < cfg.min_sample_z_span:
+            continue
+
         try:
-            poly_desc = np.polyfit(z[sample_idx], x[sample_idx], degree)
+            poly_desc = np.polyfit(
+                sample_z,
+                sample_x,
+                degree,
+            )
         except (np.linalg.LinAlgError, ValueError):
             continue
 
@@ -84,6 +95,10 @@ def fit_lane_stream(graph, stream, cfg=None):
 
     inlier_z = z[best_mask]
     inlier_x = x[best_mask]
+
+    if np.ptp(inlier_z) < cfg.min_sample_z_span:
+        return None
+    
     weights = np.sqrt(np.clip(scores[best_mask], 1e-6, None))
     try:
         final_desc = np.polyfit(inlier_z, inlier_x, degree, w=weights)

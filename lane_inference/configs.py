@@ -88,12 +88,13 @@ class LaneGraphConfig:
 
 @dataclass
 class LaneFitConfig:
-    """Controls polynomial fitting of each inferred lane stream."""
-
     degree: int = 2
     residual_threshold: float = 0.75
     max_trials: int = 100
     random_seed: int = 0
+
+    # Minimum longitudinal extent required for a RANSAC polynomial sample.
+    min_sample_z_span: float = 0.5
 
 
 # ==============================================================================
