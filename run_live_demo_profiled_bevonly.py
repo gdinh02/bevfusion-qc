@@ -5,6 +5,9 @@ Pipeline:
     CPU prepare worker: load/decode + BEVFusion preprocessing for frame N+2
     GPU inference worker: BEVFusion inference + one detection CPU snapshot for N+1
     Main CPU thread: lane inference + render + mask overlay + direct FFmpeg submission for frame N
+
+    Example Usage: python run_live_demo_profiled_bevonly.py --input <path-to-nuscenes>/scene-0956 --output bev_masked.mp4 \
+        --no-display --mask-dir <path-to-gt-dir>
 """
 from __future__ import annotations
 
