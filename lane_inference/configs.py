@@ -70,8 +70,16 @@ class LaneGraphConfig:
     sigma_cross_track: float = 0.8
     sigma_yaw_deg: float = 8.0
 
-    # Minimum connected-component size required to form a lane stream.
-    min_vehicles_per_stream: int = 2
+    # Minimum number of observations in a connected component.
+    min_observations_per_stream: int = 2
+
+    # Minimum number of distinct tracked vehicles required for the
+    # connected component to be considered a traffic stream.
+    min_tracks_per_stream: int = 2
+
+    # Exception: a single tracked vehicle may form a stream if its
+    # ego-motion-compensated observations span this much longitudinal distance.
+    single_track_min_z_span: float = 3.0
 
 
 # ==============================================================================

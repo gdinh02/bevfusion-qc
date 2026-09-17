@@ -136,12 +136,45 @@ def build_lane_compatibility_graph(pred_instances_3d, vehicle_label_ids, cfg=Non
     return build_lane_compatibility_graph_from_vehicles(vehicles, cfg=cfg), vehicles
 
 
-def get_lane_streams(graph, min_vehicles):
-    return [
-        sorted(component)
-        for component in nx.connected_components(graph)
-        if len(component) >= min_vehicles
-    ]
+def get_lane_streams(
+    graph,
+    min_vehicles,
+    min_tracks=1,
+    single_track_min_z_span=0.0,
+):
+    streams = []
+
+    for component in nx.connected_components(graph):
+        component = sorted(component)
+
+        if len(component) < min_vehicles:
+            continue
+
+        track_ids = {
+            graph.nodes[node].get("track_id")
+            for node in component
+            if graph.nodes[node].get("track_id") is not None
+        }
+
+        # Normal case: multiple distinct vehicles support the stream.
+        if len(track_ids) >= min_tracks:
+            streams.append(component)
+            continue
+
+        # Single-track exception: allow a moving vehicle to define a
+        # trajectory if its observations cover enough longitudinal distance.
+        if len(track_ids) == 1:
+            z_values = [
+                float(graph.nodes[node]["z"])
+                for node in component
+            ]
+
+            z_span = max(z_values) - min(z_values)
+
+            if z_span >= single_track_min_z_span:
+                streams.append(component)
+
+    return streams
 
 
 def print_graph_edges(graph):

@@ -160,8 +160,11 @@ class LanePipeline:
         t0 = stage_start()
         streams = get_lane_streams(
             graph,
-            min_vehicles=self.graph_cfg.min_vehicles_per_stream,
+            min_vehicles=self.graph_cfg.min_observations_per_stream,
+            min_tracks=self.graph_cfg.min_tracks_per_stream,
+            single_track_min_z_span=self.graph_cfg.single_track_min_z_span,
         )
+
         stage_end("lane_stream_components", t0)
 
         t0 = stage_start()
