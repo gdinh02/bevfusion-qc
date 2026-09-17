@@ -227,7 +227,14 @@ def extract_gt_vehicles(nusc, sample, instance_track_ids):
     return vehicles
 
 
-def build_frame(nusc, sample, frame_index, output_root, image_counts):
+def build_frame(
+    nusc,
+    sample,
+    frame_index,
+    output_root,
+    image_counts,
+    instance_track_ids,
+):
     """Copy six images and preserve the current BEVFusion input dictionary."""
     lidar_token = sample['data'].get('LIDAR_TOP')
     if not lidar_token:
@@ -268,6 +275,11 @@ def build_frame(nusc, sample, frame_index, output_root, image_counts):
 
     inputs.update(pose_fields(lidar_calibration, lidar_pose, 'lidar'))
     reference_time = int(lidar_data['timestamp'])
+    gt_vehicles = extract_gt_vehicles(
+        nusc,
+        sample,
+        instance_track_ids,
+    )
     return {
         'frame_index': frame_index,
         'token': sample['token'],
@@ -278,6 +290,7 @@ def build_frame(nusc, sample, frame_index, output_root, image_counts):
         'camera_timestamps_us': camera_times,
         'cam_paths': paths,
         'inputs_json': inputs,
+        'gt_vehicles': gt_vehicles,
     }
 
 
@@ -287,7 +300,93 @@ def validate_export(payload, scene_root):
         raise ValueError('Scene contains no frames')
     previous_timestamp = None
     tokens = set()
+    track_to_instance = {}
+    instance_to_track = {}
+    annotation_tokens = set()
+
     for index, frame in enumerate(frames):
+        if "gt_vehicles" not in frame:
+            raise ValueError(
+                f"Frame {index} has no gt_vehicles field"
+            )
+
+        for vehicle in frame["gt_vehicles"]:
+            annotation_token = vehicle["annotation_token"]
+            instance_token = vehicle["instance_token"]
+            track_id = vehicle["track_id"]
+            category_name = vehicle["category_name"]
+
+            if category_name not in GT_VEHICLE_CLASS_MAP:
+                raise ValueError(
+                    f"Unexpected GT category: {category_name}"
+                )
+
+            if (
+                not isinstance(track_id, int)
+                or isinstance(track_id, bool)
+                or track_id < 0
+            ):
+                raise ValueError(
+                    f"Invalid GT track ID: {track_id}"
+                )
+
+            if annotation_token in annotation_tokens:
+                raise ValueError(
+                    f"Duplicate GT annotation token: "
+                    f"{annotation_token}"
+                )
+            annotation_tokens.add(annotation_token)
+
+            previous_instance = track_to_instance.get(track_id)
+            if (
+                previous_instance is not None
+                and previous_instance != instance_token
+            ):
+                raise ValueError(
+                    f"GT track {track_id} maps to multiple instances"
+                )
+            track_to_instance[track_id] = instance_token
+
+            previous_track = instance_to_track.get(instance_token)
+            if (
+                previous_track is not None
+                and previous_track != track_id
+            ):
+                raise ValueError(
+                    f"GT instance {instance_token} maps to multiple tracks"
+                )
+            instance_to_track[instance_token] = track_id
+
+            translation = vehicle["translation_global"]
+            rotation = vehicle["rotation_global"]
+            size = vehicle["size"]
+
+            if (
+                len(translation) != 3
+                or not all(math.isfinite(x) for x in translation)
+            ):
+                raise ValueError(
+                    f"Invalid GT translation: {translation}"
+                )
+
+            if (
+                len(rotation) != 4
+                or not all(math.isfinite(x) for x in rotation)
+            ):
+                raise ValueError(
+                    f"Invalid GT rotation: {rotation}"
+                )
+
+            if (
+                len(size) != 3
+                or not all(
+                    math.isfinite(x) and x > 0
+                    for x in size
+                )
+            ):
+                raise ValueError(
+                    f"Invalid GT box size: {size}"
+                )
         if frame['frame_index'] != index or frame['token'] in tokens:
             raise ValueError('Invalid frame ordering or duplicate sample token')
         tokens.add(frame['token'])
@@ -306,9 +405,17 @@ def validate_export(payload, scene_root):
             if camera not in frame['inputs_json'] or camera not in frame['camera_timestamps_us']:
                 raise ValueError(f'Missing camera metadata: {camera}')
 
+        expected_tracks = payload["metainfo"].get("num_gt_tracks")
+
+    if expected_tracks != len(instance_to_track):
+        raise ValueError(
+            f"GT track count mismatch: metadata says "
+            f"{expected_tracks}, found {len(instance_to_track)}"
+        )
 
 def export_scene(nusc, scene_name, output_base):
     scene = next((s for s in nusc.scene if s['name'] == scene_name), None)
+
     if scene is None:
         raise ValueError(f'Scene {scene_name!r} not found in {nusc.version}')
     if Path(scene_name).name != scene_name or scene_name in ('.', '..'):
@@ -316,11 +423,14 @@ def export_scene(nusc, scene_name, output_base):
     output_base = Path(output_base).expanduser().resolve()
     target = output_base / scene_name
     reuse_existing = target.is_dir()
+
     if target.exists() and not reuse_existing:
         raise FileExistsError(f'Scene destination is not a directory: {target}')
     if reuse_existing:
         print(f'Reusing images in {target}; rebuilding the BEVFusion PKL.')
     output_base.mkdir(parents=True, exist_ok=True)
+    instance_track_ids = build_scene_gt_track_map(nusc, scene)
+
     # Build in a temporary directory so a failed copy cannot look like a finished export.
     with tempfile.TemporaryDirectory(prefix=f'.{scene_name}-', dir=output_base) as temporary:
         staging = target if reuse_existing else Path(temporary) / scene_name
@@ -329,18 +439,42 @@ def export_scene(nusc, scene_name, output_base):
         image_counts = {'reused': 0, 'copied': 0}
         frames = []
         for index, sample in enumerate(iterate_scene_samples(nusc, scene)):
-            frames.append(build_frame(nusc, sample, index, staging, image_counts))
+            frames.append(
+                build_frame(
+                    nusc,
+                    sample,
+                    index,
+                    staging,
+                    image_counts,
+                    instance_track_ids,
+                )
+            )
             print(f'Exported frame {index + 1}: {sample["token"]}', flush=True)
         if len(frames) != int(scene['nbr_samples']):
             raise ValueError('Scene sample count differs from its metadata')
         payload = {
-            'metainfo': {
-                'schema': 'bevfusion-qc.scene', 'schema_version': 1,
-                'scene_name': scene_name, 'scene_token': scene['token'],
-                'dataset_version': nusc.version, 'camera_order': list(CAMERAS),
-                'timestamp_unit': 'timestamp: seconds; *_us: microseconds',
-                'quaternion_order': 'wxyz', 'reference_sensor': 'LIDAR_TOP',
-                'path_root': 'scene_directory', 'num_frames': len(frames),
+            "metainfo": {
+                "schema": "bevfusion-qc.scene",
+                "schema_version": 2,
+                "scene_name": scene_name,
+                "scene_token": scene["token"],
+                "dataset_version": nusc.version,
+                "camera_order": list(CAMERAS),
+                "timestamp_unit": "timestamp: seconds; *_us: microseconds",
+                "quaternion_order": "wxyz",
+                "reference_sensor": "LIDAR_TOP",
+                "path_root": "scene_directory",
+                "num_frames": len(frames),
+
+                "ground_truth": {
+                    "coordinate_frame": "global",
+                    "size_order": ["width", "length", "height"],
+                    "quaternion_order": "wxyz",
+                    "tracking_source": "nuscenes_instance_token",
+                    "track_id_scope": "scene",
+                    "vehicle_categories": sorted(GT_VEHICLE_CLASS_MAP.keys()),
+                },
+                "num_gt_tracks": len(instance_track_ids),
             },
             'data_list': frames,
         }
