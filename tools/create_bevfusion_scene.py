@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export one nuScenes scene for gdinh02/bevfusion-qc camera-only inference.
 
-python tools/create_bevfusion_scene.py --scene scene-0038 --root Z:/dataset/nuscenes --output-base Z:/dataset/
+python tools/create_bevfusion_scene.py --scene scene-0956 --root Z:/dataset/nuscenes --output-base Z:/dataset/
 
 Usage (run in an environment with nuscenes-devkit installed):
     python create_bevfusion_scene.py --scene scene-0095 \
@@ -63,6 +63,14 @@ CAMERAS = (
     'CAM_BACK', 'CAM_BACK_RIGHT', 'CAM_BACK_LEFT',
 )
 
+GT_VEHICLE_CLASS_MAP = {
+    "vehicle.car": "car",
+    "vehicle.truck": "truck",
+    "vehicle.bus.bendy": "bus",
+    "vehicle.bus.rigid": "bus",
+    "vehicle.trailer": "trailer",
+    "vehicle.construction": "construction",
+}
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
@@ -113,6 +121,110 @@ def iterate_scene_samples(nusc, scene):
             raise ValueError(f'Sample {token} belongs to another scene')
         yield sample
         token = sample['next']
+
+
+def build_scene_gt_track_map(nusc, scene):
+    """
+    Assign a deterministic scene-local integer track ID to every relevant
+    nuScenes vehicle instance.
+
+    Sorting the instance tokens makes the mapping independent of annotation
+    iteration order.
+    """
+    instance_tokens = set()
+
+    for sample in iterate_scene_samples(nusc, scene):
+        for annotation_token in sample["anns"]:
+            annotation = nusc.get("sample_annotation", annotation_token)
+
+            if annotation["category_name"] not in GT_VEHICLE_CLASS_MAP:
+                continue
+
+            instance_tokens.add(annotation["instance_token"])
+
+    return {
+        instance_token: track_id
+        for track_id, instance_token in enumerate(sorted(instance_tokens))
+    }
+
+
+def extract_gt_vehicles(nusc, sample, instance_track_ids):
+    """
+    Export relevant nuScenes GT vehicle annotations without changing their
+    coordinate frame.
+
+    translation and rotation remain in the nuScenes global frame.
+    size remains nuScenes [width, length, height].
+    """
+    vehicles = []
+
+    for annotation_token in sample["anns"]:
+        annotation = nusc.get("sample_annotation", annotation_token)
+
+        category_name = annotation["category_name"]
+        class_name = GT_VEHICLE_CLASS_MAP.get(category_name)
+
+        if class_name is None:
+            continue
+
+        instance_token = annotation["instance_token"]
+
+        if instance_token not in instance_track_ids:
+            raise ValueError(
+                f"Missing GT track mapping for instance {instance_token}"
+            )
+
+        vehicles.append(
+            {
+                "annotation_token": annotation["token"],
+                "instance_token": instance_token,
+                "track_id": int(instance_track_ids[instance_token]),
+
+                # Keep both granular nuScenes category and coarse class.
+                "category_name": category_name,
+                "class_name": class_name,
+
+                # IMPORTANT: these stay in the nuScenes GLOBAL frame.
+                "translation_global": finite_vector(
+                    annotation["translation"],
+                    3,
+                    "GT translation",
+                ),
+                "rotation_global": finite_vector(
+                    annotation["rotation"],
+                    4,
+                    "GT rotation",
+                ),
+
+                # nuScenes order: width, length, height.
+                "size": finite_vector(
+                    annotation["size"],
+                    3,
+                    "GT size",
+                ),
+
+                # Useful diagnostic/evaluation metadata.
+                "visibility_token": str(
+                    annotation.get("visibility_token", "")
+                ),
+                "num_lidar_pts": int(
+                    annotation.get("num_lidar_pts", 0)
+                ),
+                "num_radar_pts": int(
+                    annotation.get("num_radar_pts", 0)
+                ),
+            }
+        )
+
+    # Makes the output ordering reproducible as well.
+    vehicles.sort(
+        key=lambda vehicle: (
+            vehicle["track_id"],
+            vehicle["annotation_token"],
+        )
+    )
+
+    return vehicles
 
 
 def build_frame(nusc, sample, frame_index, output_root, image_counts):
