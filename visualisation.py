@@ -30,25 +30,56 @@ from visualisation import(
 # ==============================================================================
 # HELPER: DRAW GRAPH ON BEV MAP
 # ==============================================================================
-def draw_lane_graph_on_bev(canvas, graph, streams, pixels_per_meter):
-    """Overlays the lane graph edges on the existing BEV map."""
+def draw_lane_graph_on_bev(
+    canvas,
+    graph,
+    streams,
+    pixels_per_meter,
+):
+    """Draw only graph edges belonging to accepted traffic streams."""
     h, w, _ = canvas.shape
     center_x, center_y = w // 2, h // 2
 
-    # Draw edges connecting vehicles
+    node_to_stream = {
+        node: stream_id
+        for stream_id, stream in enumerate(streams)
+        for node in stream
+    }
+
     for u, v, data in graph.edges(data=True):
+        # Ignore graph edges that do not belong to an accepted stream.
+        if (
+            u not in node_to_stream
+            or v not in node_to_stream
+            or node_to_stream[u] != node_to_stream[v]
+        ):
+            continue
+
         node_u = graph.nodes[u]
         node_v = graph.nodes[v]
-        
-        # Convert physical (x, z) back to image pixels
-        img_u_x = int(center_x + (node_u['x'] * pixels_per_meter))
-        img_u_y = int(center_y - (node_u['z'] * pixels_per_meter))
-        
-        img_v_x = int(center_x + (node_v['x'] * pixels_per_meter))
-        img_v_y = int(center_y - (node_v['z'] * pixels_per_meter))
-        
-        # Draw line (Cyan color for graph connections)
-        cv2.line(canvas, (img_u_x, img_u_y), (img_v_x, img_v_y), (255, 255, 0), 2, cv2.LINE_AA)
+
+        img_u_x = int(
+            center_x + node_u["x"] * pixels_per_meter
+        )
+        img_u_y = int(
+            center_y - node_u["z"] * pixels_per_meter
+        )
+
+        img_v_x = int(
+            center_x + node_v["x"] * pixels_per_meter
+        )
+        img_v_y = int(
+            center_y - node_v["z"] * pixels_per_meter
+        )
+
+        cv2.line(
+            canvas,
+            (img_u_x, img_u_y),
+            (img_v_x, img_v_y),
+            (255, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
 
     return canvas
 
