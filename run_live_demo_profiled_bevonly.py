@@ -198,6 +198,7 @@ def render_inference_result(
     app: ProfiledPrefetchBEVFusionAppCustom,
     lane_pipeline: ProfiledOptimizedLanePipeline,
     result: InferenceResult,
+    lane_only: False # For eval predictions
 ):
     """CPU-only ordered post-processing for one completed inference result.
     Modified to output ONLY a 20x20m BEV map.
@@ -217,18 +218,23 @@ def render_inference_result(
     timings.update(lane_pipeline.last_profile)
 
     t0 = time.perf_counter()
-    bev = base.generate_bev_map(
-        bboxes=torch.from_numpy(result.bboxes),
-        labels=torch.from_numpy(result.labels),
-        pixels_per_meter=base.PIXELS_PER_METER,
-        max_range_meters=20
-    )
-    bev = base.draw_lane_graph_on_bev(
-        bev,
-        graph,
-        streams,
-        pixels_per_meter=base.PIXELS_PER_METER,
-    )
+    if not lane_only:
+        bev = base.generate_bev_map(
+            bboxes=torch.from_numpy(result.bboxes),
+            labels=torch.from_numpy(result.labels),
+            pixels_per_meter=base.PIXELS_PER_METER,
+            max_range_meters=20
+        )
+        bev = base.draw_lane_graph_on_bev(
+            bev,
+            graph,
+            streams,
+            pixels_per_meter=base.PIXELS_PER_METER,
+        )
+    else:
+        img_size = int(20 * 2 * base.PIXELS_PER_METER)
+        bev = np.zeros((img_size, img_size, 3), dtype=np.uint8)
+    
     bev = base.draw_lane_boundaries_on_bev(
         bev,
         boundaries,
@@ -304,6 +310,7 @@ def main(argv=None):
     # Pre-parse specifically for this script's added arguments
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--mask-dir", type=str, default=None, help="Directory containing mask videos")
+    parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
     custom_args, remaining_argv = parser.parse_known_args(argv)
     
     # Parse standard arguments using remaining argv
@@ -317,6 +324,8 @@ def main(argv=None):
         f"Loaded {len(frames)} total frames from {info_path.name}; "
         f"timestamp span {timestamps[-1] - timestamps[0]:.3f}s"
     )
+
+    scene_name = os.path.basename(os.path.normpath(args.input))
 
     # --- Match mask video and slice frame range based on image_2a0c85.png format ---
     mask_cap = None
@@ -369,6 +378,10 @@ def main(argv=None):
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
         print("Live controls: p = pause/resume, q = stop")
 
+    if custom_args.pred_dir:
+        os.makedirs(custom_args.pred_dir, exist_ok=True)
+        print(f"Saving bitmasks to: {custom_args.pred_dir}")
+
     try:
         while True:
             wait_start = time.perf_counter()
@@ -381,8 +394,16 @@ def main(argv=None):
                 app, # type:ignore
                 lane_pipeline,
                 result,
+                True if custom_args.pred_dir else False # Disable drawing cars and stuff when getting eval result
             )
             timings["inference_wait_main"] = inference_wait_ms
+
+            if custom_args.pred_dir:
+                inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
+                _, inf_bitmask = cv2.threshold(inf_gray, 1, 255, cv2.THRESH_BINARY)
+                
+                inf_save_path = os.path.join(custom_args.pred_dir, f"{scene_name}_{result.item.frame_id:04d}_pred.png")
+                cv2.imwrite(inf_save_path, inf_bitmask)
 
             # --- Mask Overlay Logic ---
             if mask_cap is not None and mask_cap.isOpened():
@@ -396,6 +417,11 @@ def main(argv=None):
                     # Resize mask to exactly match the BEV output dimensions just in case
                     h, w = combined.shape[:2]
                     mask_frame_gray = cv2.resize(mask_frame_gray, (w, h), interpolation=cv2.INTER_NEAREST)
+
+                    if custom_args.pred_dir:
+                        _, gt_bitmask = cv2.threshold(mask_frame_gray, 127, 255, cv2.THRESH_BINARY)
+                        gt_save_path = os.path.join(custom_args.pred_dir, f"{scene_name}_{result.item.frame_id:04d}_gt.png")
+                        cv2.imwrite(gt_save_path, gt_bitmask)
                     
                     # Overlay the mask (Red color with 0.5 opacity)
                     combined = overlay_transparent_mask(combined, mask_frame_gray, color=(0, 0, 255), alpha=0.5)

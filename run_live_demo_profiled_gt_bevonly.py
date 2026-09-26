@@ -90,6 +90,7 @@ def gt_vehicles_to_visualisation_boxes(
 def render_gt_frame(
     lane_pipeline: GTLanePipeline,
     frame: dict,
+    lane_only: False # For eval predictions
 ):
     """Run GT lane inference and render the existing 40 x 40 metre BEV."""
     timings: dict[str, float] = {}
@@ -110,18 +111,24 @@ def render_gt_frame(
     timings["gt_visualisation_boxes"] = _ms(t0)
 
     t0 = time.perf_counter()
-    bev = base.generate_bev_map(
-        bboxes=torch.from_numpy(bboxes),
-        labels=torch.from_numpy(labels),
-        pixels_per_meter=base.PIXELS_PER_METER,
-        max_range_meters=20,
-    )
-    bev = base.draw_lane_graph_on_bev(
-        bev,
-        graph,
-        streams,
-        pixels_per_meter=base.PIXELS_PER_METER,
-    )
+    
+    if not lane_only:
+        bev = base.generate_bev_map(
+            bboxes=torch.from_numpy(bboxes),
+            labels=torch.from_numpy(labels),
+            pixels_per_meter=base.PIXELS_PER_METER,
+            max_range_meters=20,
+        )
+        bev = base.draw_lane_graph_on_bev(
+            bev,
+            graph,
+            streams,
+            pixels_per_meter=base.PIXELS_PER_METER,
+        )
+    else:
+        img_size = int(20 * 2 * base.PIXELS_PER_METER)
+        bev = np.zeros((img_size, img_size, 3), dtype=np.uint8)
+
     bev = base.draw_lane_boundaries_on_bev(
         bev,
         boundaries,
@@ -229,6 +236,8 @@ def main(argv=None):
         default=None,
         help="Directory containing mask videos",
     )
+    parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
+
     custom_args, remaining_argv = parser.parse_known_args(argv)
     args = base.parse_args(remaining_argv)
 
@@ -237,6 +246,8 @@ def main(argv=None):
         f"Loaded {len(frames)} total frames from {info_path.name}; "
         f"timestamp span {timestamps[-1] - timestamps[0]:.3f}s"
     )
+
+    scene_name = os.path.basename(os.path.normpath(args.input))
 
     for frame in frames:
         if not isinstance(frame.get("gt_vehicles"), list):
@@ -273,12 +284,25 @@ def main(argv=None):
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
         print("Live controls: p = pause/resume, q = stop")
 
+    if custom_args.pred_dir:
+        os.makedirs(custom_args.pred_dir, exist_ok=True)
+        print(f"Saving bitmasks to: {custom_args.pred_dir}")
+
     try:
         for playback_index, frame in enumerate(frames):
             combined, vehicles, streams, exported_vehicles, timings = render_gt_frame(
                 lane_pipeline,
                 frame,
+                True if custom_args.pred_dir else False # Disable drawing cars and stuff when getting eval result
             )
+
+            if custom_args.pred_dir:
+                inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
+                _, inf_bitmask = cv2.threshold(inf_gray, 1, 255, cv2.THRESH_BINARY)
+                
+                inf_save_path = os.path.join(custom_args.pred_dir, f"{scene_name}_{playback_index:04d}_pred.png")
+                cv2.imwrite(inf_save_path, inf_bitmask)
+
 
             if mask_cap is not None and mask_cap.isOpened():
                 ret, mask_frame = mask_cap.read()
@@ -291,6 +315,12 @@ def main(argv=None):
                         (w, h),
                         interpolation=cv2.INTER_NEAREST,
                     )
+
+                    if custom_args.pred_dir:
+                        _, gt_bitmask = cv2.threshold(mask_frame, 127, 255, cv2.THRESH_BINARY)
+                        gt_save_path = os.path.join(custom_args.pred_dir, f"{scene_name}_{playback_index:04d}_gt.png")
+                        cv2.imwrite(gt_save_path, gt_bitmask)
+
                     combined = overlay_transparent_mask(
                         combined,
                         mask_frame,
