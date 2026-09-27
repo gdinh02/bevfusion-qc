@@ -175,7 +175,7 @@ class LaneBoundaryConfig:
     provisional_dedup_distance: float = 0.75
 
     # Diagnostic logging.
-    verbose: bool = True
+    verbose: bool = False
 
 
 # ==============================================================================
