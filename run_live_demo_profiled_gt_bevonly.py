@@ -10,9 +10,9 @@ Examples:
         --input Z:/dataset/scene-0956 --output gt_bev.mp4
 
     python run_live_demo_profiled_gt_bevonly.py `
-        --input Z:/dataset/scene-0956 --output gt_bev.mp4 `
-        --mask-dir Z:/dataset/mask --no-display
-        --pred-dir ./pred-dir
+        --input Z:/dataset/scene-0095 --output gt_bev.mp4 `
+        --mask-dir Z:/dataset/mask --no-display `
+        --pred-dir Z:/dataset/scene-0095/pred
 """
 from __future__ import annotations
 

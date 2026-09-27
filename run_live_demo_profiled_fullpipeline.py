@@ -14,7 +14,7 @@ Place beside:
     lane_profile_optimized.py
 
 Example:
-    python run_live_demo_profiled_fullpipeline.py --input Z:/dataset/scene-0095 --output Z:/dataset/scene-0095/demo_profiled_pipeline.mp4 --no-display
+    python run_live_demo_profiled_fullpipeline.py --input Z:/dataset/scene-0956 --output Z:/dataset/scene-0956/demo_profiled_pipeline.mp4 --no-display
 """
 from __future__ import annotations
 

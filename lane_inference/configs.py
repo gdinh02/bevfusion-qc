@@ -34,8 +34,8 @@ class TemporalConfig:
     max_track_distance: float = 12.0
     max_track_yaw_diff_deg: float = 15.0
     max_track_frame_gap: int = 5
-    temporal_decay: float = 1.0
-    min_track_observations: int = 1
+    temporal_decay: float = 0.7
+    min_track_observations: int = 2
 
     # Keep detections from the newest frame even when their track has not yet
     # accumulated min_track_observations.
@@ -89,12 +89,20 @@ class LaneGraphConfig:
 @dataclass
 class LaneFitConfig:
     degree: int = 2
-    residual_threshold: float = 0.75
-    max_trials: int = 100
+    residual_threshold: float = 0.5
+    max_trials: int = 200
     random_seed: int = 0
 
     # Minimum longitudinal extent required for a RANSAC polynomial sample.
     min_sample_z_span: float = 0.5
+
+    # Maximum disagreement between vehicle yaw and fitted lane tangent.
+    max_tangent_error_deg: float = 20.0
+
+    # Strength of the yaw/gradient constraint.
+    # Roughly: a slope error is treated like the lateral error it would
+    # produce after this many metres of travel.
+    yaw_constraint_length: float = 5.0
 
 
 # ==============================================================================

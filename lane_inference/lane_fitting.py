@@ -2,6 +2,7 @@ import math
 import numpy as np
 
 from lane_inference.configs import LaneFitConfig, LaneMergeConfig
+from lane_inference.geometry import axial_angle_diff
 
 '''
 from lane_fitting import (
@@ -30,20 +31,113 @@ def lane_polynomial_slope(coefficients, z):
         slope += power * coefficient * z ** (power - 1)
     return slope
 
+def _fit_position_and_yaw(
+    z,
+    x,
+    yaw,
+    scores,
+    degree,
+    yaw_constraint_length,
+):
+    """
+    Fit x(z) using both:
+        x(z_i)  ~= x_i
+        x'(z_i) ~= cot(yaw_i)
+
+    Coefficients are returned in ascending order:
+        [a0, a1, a2, ...]
+    """
+    z = np.asarray(z, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    yaw = np.asarray(yaw, dtype=np.float64)
+    scores = np.asarray(scores, dtype=np.float64)
+
+    # Position equations:
+    # x = a0 + a1*z + a2*z^2 + ...
+    position_A = np.vander(
+        z,
+        N=degree + 1,
+        increasing=True,
+    )
+
+    # Derivative equations:
+    # dx/dz = a1 + 2*a2*z + 3*a3*z^2 + ...
+    derivative_A = np.zeros_like(position_A)
+    for power in range(1, degree + 1):
+        derivative_A[:, power] = power * z ** (power - 1)
+
+    # Vehicle heading [cos(yaw), sin(yaw)] in x-z coordinates.
+    # Therefore dx/dz = cos(yaw) / sin(yaw).
+    sin_yaw = np.sin(yaw)
+    valid_yaw = np.abs(sin_yaw) > 1e-3
+
+    observed_slope = np.zeros_like(yaw)
+    observed_slope[valid_yaw] = (
+        np.cos(yaw[valid_yaw]) / sin_yaw[valid_yaw]
+    )
+
+    weights = np.sqrt(np.clip(scores, 1e-6, None))
+
+    A_position = position_A * weights[:, None]
+    b_position = x * weights
+
+    if np.any(valid_yaw):
+        yaw_weights = (
+            weights[valid_yaw] * yaw_constraint_length
+        )
+
+        A_yaw = (
+            derivative_A[valid_yaw]
+            * yaw_weights[:, None]
+        )
+        b_yaw = (
+            observed_slope[valid_yaw]
+            * yaw_weights
+        )
+
+        A = np.vstack((A_position, A_yaw))
+        b = np.concatenate((b_position, b_yaw))
+    else:
+        A = A_position
+        b = b_position
+
+    coefficients, *_ = np.linalg.lstsq(
+        A,
+        b,
+        rcond=None,
+    )
+
+    return coefficients
 
 def fit_lane_stream(graph, stream, cfg=None):
     if cfg is None:
         cfg = LaneFitConfig()
 
-    nodes = sorted(stream, key=lambda node: graph.nodes[node]["z"])
+    nodes = sorted(
+        stream,
+        key=lambda node: graph.nodes[node]["z"],
+    )
+
     if len(nodes) < 2:
         return None
 
-    z = np.array([graph.nodes[n]["z"] for n in nodes], dtype=np.float64)
-    x = np.array([graph.nodes[n]["x"] for n in nodes], dtype=np.float64)
+    z = np.array(
+        [graph.nodes[n]["z"] for n in nodes],
+        dtype=np.float64,
+    )
+    x = np.array(
+        [graph.nodes[n]["x"] for n in nodes],
+        dtype=np.float64,
+    )
+    yaw = np.array(
+        [graph.nodes[n]["yaw"] for n in nodes],
+        dtype=np.float64,
+    )
+
     scores = np.array(
         [
-            graph.nodes[n]["score"] * graph.nodes[n].get("evidence_weight", 1.0)
+            graph.nodes[n]["score"]
+            * graph.nodes[n].get("evidence_weight", 1.0)
             for n in nodes
         ],
         dtype=np.float64,
@@ -51,20 +145,35 @@ def fit_lane_stream(graph, stream, cfg=None):
 
     degree = min(cfg.degree, len(nodes) - 1)
     sample_size = degree + 1
-    trials = 1 if len(nodes) == sample_size else cfg.max_trials
+    trials = (
+        1
+        if len(nodes) == sample_size
+        else cfg.max_trials
+    )
+
     rng = np.random.default_rng(cfg.random_seed)
+
     best_mask = None
     best_count = -1
     best_rmse = np.inf
+    best_yaw_error = np.inf
+
+    max_tangent_error = math.radians(
+        cfg.max_tangent_error_deg
+    )
 
     for _ in range(trials):
         sample_idx = (
             np.arange(len(nodes))
             if len(nodes) == sample_size
-            else rng.choice(len(nodes), size=sample_size, replace=False)
+            else rng.choice(
+                len(nodes),
+                size=sample_size,
+                replace=False,
+            )
         )
+
         sample_z = z[sample_idx]
-        sample_x = x[sample_idx]
 
         if np.unique(sample_z).size < sample_size:
             continue
@@ -73,43 +182,141 @@ def fit_lane_stream(graph, stream, cfg=None):
             continue
 
         try:
-            poly_desc = np.polyfit(
-                sample_z,
-                sample_x,
+            coefficients = _fit_position_and_yaw(
+                z[sample_idx],
+                x[sample_idx],
+                yaw[sample_idx],
+                scores[sample_idx],
                 degree,
+                cfg.yaw_constraint_length,
             )
         except (np.linalg.LinAlgError, ValueError):
             continue
 
-        predicted = np.polyval(poly_desc, z)
-        mask = np.abs(x - predicted) <= cfg.residual_threshold
+        predicted_x = evaluate_lane_polynomial(
+            coefficients,
+            z,
+        )
+
+        predicted_slope = lane_polynomial_slope(
+            coefficients,
+            z,
+        )
+
+        # Tangent direction of x(z):
+        # vector = [dx/dz, 1]
+        predicted_yaw = np.arctan2(
+            np.ones_like(predicted_slope),
+            predicted_slope,
+        )
+
+        lateral_error = np.abs(x - predicted_x)
+
+        yaw_error = axial_angle_diff(
+            predicted_yaw,
+            yaw,
+        )
+
+        mask = (
+            (lateral_error <= cfg.residual_threshold)
+            & (yaw_error <= max_tangent_error)
+        )
+
         count = int(mask.sum())
+
         if count < sample_size:
             continue
-        rmse = float(np.sqrt(np.mean((x[mask] - predicted[mask]) ** 2)))
-        if count > best_count or (count == best_count and rmse < best_rmse):
-            best_mask, best_count, best_rmse = mask, count, rmse
+
+        rmse = float(
+            np.sqrt(
+                np.mean(
+                    (x[mask] - predicted_x[mask]) ** 2
+                )
+            )
+        )
+
+        mean_yaw_error = float(
+            np.mean(yaw_error[mask])
+        )
+
+        if (
+            count > best_count
+            or (
+                count == best_count
+                and rmse < best_rmse
+            )
+            or (
+                count == best_count
+                and np.isclose(rmse, best_rmse)
+                and mean_yaw_error < best_yaw_error
+            )
+        ):
+            best_mask = mask
+            best_count = count
+            best_rmse = rmse
+            best_yaw_error = mean_yaw_error
 
     if best_mask is None:
         return None
 
     inlier_z = z[best_mask]
     inlier_x = x[best_mask]
+    inlier_yaw = yaw[best_mask]
+    inlier_scores = scores[best_mask]
 
     if np.ptp(inlier_z) < cfg.min_sample_z_span:
         return None
-    
-    weights = np.sqrt(np.clip(scores[best_mask], 1e-6, None))
+
+    # Final fit using all RANSAC inliers, with yaw constraints.
     try:
-        final_desc = np.polyfit(inlier_z, inlier_x, degree, w=weights)
+        final_coefficients = _fit_position_and_yaw(
+            inlier_z,
+            inlier_x,
+            inlier_yaw,
+            inlier_scores,
+            degree,
+            cfg.yaw_constraint_length,
+        )
     except (np.linalg.LinAlgError, ValueError):
         return None
 
-    prediction = np.polyval(final_desc, inlier_z)
-    inlier_nodes = [n for n, keep in zip(nodes, best_mask) if keep]
-    outlier_nodes = [n for n, keep in zip(nodes, best_mask) if not keep]
+    prediction = evaluate_lane_polynomial(
+        final_coefficients,
+        inlier_z,
+    )
 
-    has_track_info = any("track_id" in graph.nodes[n] for n in inlier_nodes)
+    final_slope = lane_polynomial_slope(
+        final_coefficients,
+        inlier_z,
+    )
+
+    final_yaw = np.arctan2(
+        np.ones_like(final_slope),
+        final_slope,
+    )
+
+    final_yaw_error = axial_angle_diff(
+        final_yaw,
+        inlier_yaw,
+    )
+
+    inlier_nodes = [
+        n
+        for n, keep in zip(nodes, best_mask)
+        if keep
+    ]
+
+    outlier_nodes = [
+        n
+        for n, keep in zip(nodes, best_mask)
+        if not keep
+    ]
+
+    has_track_info = any(
+        "track_id" in graph.nodes[n]
+        for n in inlier_nodes
+    )
+
     track_ids = sorted(
         {
             int(graph.nodes[n]["track_id"])
@@ -117,6 +324,7 @@ def fit_lane_stream(graph, stream, cfg=None):
             if graph.nodes[n].get("track_id") is not None
         }
     )
+
     num_tracks = len(track_ids)
 
     if not has_track_info:
@@ -128,10 +336,22 @@ def fit_lane_stream(graph, stream, cfg=None):
 
     return {
         "degree": degree,
-        "coefficients": final_desc[::-1].copy(),
+        "coefficients": final_coefficients.copy(),
         "inliers": inlier_nodes,
         "outliers": outlier_nodes,
-        "rmse": float(np.sqrt(np.mean((inlier_x - prediction) ** 2))),
+        "rmse": float(
+            np.sqrt(
+                np.mean(
+                    (inlier_x - prediction) ** 2
+                )
+            )
+        ),
+        "mean_tangent_error_deg": float(
+            np.degrees(np.mean(final_yaw_error))
+        ),
+        "max_tangent_error_deg": float(
+            np.degrees(np.max(final_yaw_error))
+        ),
         "z_min": float(inlier_z.min()),
         "z_max": float(inlier_z.max()),
         "num_observations": len(inlier_nodes),
@@ -140,7 +360,6 @@ def fit_lane_stream(graph, stream, cfg=None):
         "has_track_info": has_track_info,
         "track_support": track_support,
     }
-
 
 def fit_lane_streams(graph, streams, cfg=None):
     fits = []
