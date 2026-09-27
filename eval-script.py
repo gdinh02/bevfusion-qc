@@ -36,6 +36,9 @@ def create_vehicle_blob_mask(json_path, shape, ppm=20.0, padding_meters=10.0):
             continue
 
         points.append([px, py])
+
+    if len(points) == 0:
+        return None
         
     points = np.array(points, dtype=np.int32)
     x, y, w, h = cv2.boundingRect(points)
@@ -141,6 +144,10 @@ def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
         pred_dilated = cv2.dilate(pred_bin, kernel, iterations=1)
         
         blob_mask = create_vehicle_blob_mask(json_path, gt_mask.shape, ppm=ppm, padding_meters=padding)
+
+        if blob_mask is None:
+            continue
+
         blob_bool = blob_mask > 0
         
         gt_bool = (gt_dilated > 0) & blob_bool

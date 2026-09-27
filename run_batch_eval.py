@@ -11,6 +11,7 @@ def main():
     PRED_DIR = "./pred-dir"
     VIZ_DIR = "./eval-viz"
     SUMMARY_FILE = "evaluation_summary.txt"
+    MIN_FRAMES = 15
 
     # Initialize the summary file with a timestamp
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -27,17 +28,32 @@ def main():
     
     scene_ids = set()
     for f in mask_files:
-        match = re.search(r'(scene-\d+)', f)
+        # Match pattern like: scene-1046_frames-00-39.mp4
+        match = re.search(r'(scene-\d+)_frames-(\d+)-(\d+)\.mp4', f)
         if match:
-            scene_ids.add(match.group(1))
+            scene_id = match.group(1)
+            start_frame = int(match.group(2))
+            end_frame = int(match.group(3))
+            frame_count = (end_frame - start_frame) + 1
+            
+            if frame_count >= MIN_FRAMES:
+                scene_ids.add(scene_id)
+            else:
+                print(f"Skipping {scene_id}: Contains only {frame_count} frames (minimum {MIN_FRAMES} required).")
+        else:
+            # Fallback if filename doesn't have the frames format, but still matches 'scene-XXXX'
+            match_fallback = re.search(r'(scene-\d+)', f)
+            if match_fallback:
+                print(f"Warning: Could not parse frame count from {f}. Including {match_fallback.group(1)} by default.")
+                scene_ids.add(match_fallback.group(1))
             
     scene_ids = sorted(list(scene_ids))
     
     if not scene_ids:
-        print(f"No valid scenes found in {MASK_DIR}")
+        print(f"No valid scenes with >={MIN_FRAMES} frames found in {MASK_DIR}")
         return
 
-    print(f"Found {len(scene_ids)} scenes to evaluate: {', '.join(scene_ids)}")
+    print(f"\nFound {len(scene_ids)} valid scenes to evaluate.")
 
     recalls = []
 
@@ -67,7 +83,6 @@ def main():
         ]
         
         print(f"[{scene_id}] Generating masks and vehicle blobs...")
-        # We don't capture output here so you can see the generation progress in the terminal
         res1 = subprocess.run(cmd1)
         if res1.returncode != 0:
             print(f"[{scene_id}] Error: Generation script failed. Skipping to next scene.")
@@ -86,7 +101,6 @@ def main():
         ]
         
         print(f"[{scene_id}] Running evaluation...")
-        # We capture output here to extract the metrics silently
         res2 = subprocess.run(cmd2, capture_output=True, text=True)
         
         if res2.returncode != 0:

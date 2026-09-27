@@ -1,9 +1,8 @@
-Batch Evaluation Summary (2026-09-27 17:11:37)
+Batch Evaluation Summary (2026-09-27 18:13:28)
 ============================================================
 
-scene-0030   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
-scene-0059   | Precision: 0.6575 | Recall: 0.1467 | F1: 0.2399 | IoU: 0.1363
-scene-0160   | Precision: 0.1221 | Recall: 0.1153 | F1: 0.1186 | IoU: 0.0631
+scene-0029   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
+scene-0031   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
 scene-0161   | Precision: 0.1965 | Recall: 0.0189 | F1: 0.0344 | IoU: 0.0175
 scene-0193   | Precision: 0.8588 | Recall: 0.1418 | F1: 0.2435 | IoU: 0.1386
 scene-0194   | Precision: 0.6348 | Recall: 0.1170 | F1: 0.1975 | IoU: 0.1096
@@ -27,6 +26,7 @@ scene-0294   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
 scene-0295   | Precision: 0.0352 | Recall: 0.0149 | F1: 0.0209 | IoU: 0.0106
 scene-0301   | Precision: 0.6846 | Recall: 0.1486 | F1: 0.2441 | IoU: 0.1390
 scene-0323   | Precision: 0.5407 | Recall: 0.0261 | F1: 0.0499 | IoU: 0.0256
+scene-0351   | Precision: 0.5619 | Recall: 0.1065 | F1: 0.1791 | IoU: 0.0983
 scene-0355   | Precision: 0.1801 | Recall: 0.0448 | F1: 0.0717 | IoU: 0.0372
 scene-0357   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
 scene-0358   | Precision: 0.4939 | Recall: 0.0934 | F1: 0.1571 | IoU: 0.0853
@@ -90,6 +90,7 @@ scene-0903   | Precision: 0.0267 | Recall: 0.0129 | F1: 0.0174 | IoU: 0.0088
 scene-0956   | Precision: 0.2485 | Recall: 0.1181 | F1: 0.1602 | IoU: 0.0870
 scene-0957   | Precision: 0.2330 | Recall: 0.1414 | F1: 0.1760 | IoU: 0.0965
 scene-0959   | Precision: 0.3833 | Recall: 0.0838 | F1: 0.1375 | IoU: 0.0738
+scene-0961   | Precision: 0.5317 | Recall: 0.0780 | F1: 0.1360 | IoU: 0.0729
 scene-0975   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
 scene-0976   | Precision: 0.1651 | Recall: 0.0069 | F1: 0.0132 | IoU: 0.0067
 scene-0977   | Precision: 0.4764 | Recall: 0.0593 | F1: 0.1055 | IoU: 0.0557
@@ -98,7 +99,6 @@ scene-0981   | Precision: 0.6956 | Recall: 0.2302 | F1: 0.3459 | IoU: 0.2091
 scene-1045   | Precision: 0.6083 | Recall: 0.2490 | F1: 0.3534 | IoU: 0.2146
 scene-1046   | Precision: 0.7478 | Recall: 0.3837 | F1: 0.5072 | IoU: 0.3398
 scene-1047   | Precision: 0.6430 | Recall: 0.4710 | F1: 0.5437 | IoU: 0.3733
-scene-1090   | Precision: 0.0000 | Recall: 0.0000 | F1: 0.0000 | IoU: 0.0000
 scene-1093   | Precision: 0.6386 | Recall: 0.6409 | F1: 0.6397 | IoU: 0.4703
 scene-1096   | Precision: 0.1267 | Recall: 0.0079 | F1: 0.0149 | IoU: 0.0075
 scene-1108   | Precision: 0.4723 | Recall: 0.2870 | F1: 0.3570 | IoU: 0.2173
@@ -107,4 +107,4 @@ scene-1109   | Precision: 0.4094 | Recall: 0.2002 | F1: 0.2689 | IoU: 0.1553
 ------------------------------------------------------------
 === BATCH COMPLETE ===
 Total scenes evaluated: 102
-Average Recall      : 0.0893
+Average Recall      : 0.0885
