@@ -101,11 +101,18 @@ def _fit_position_and_yaw(
         A = A_position
         b = b_position
 
-    coefficients, *_ = np.linalg.lstsq(
+    coefficients, _, rank, _ = np.linalg.lstsq(
         A,
         b,
         rcond=None,
     )
+
+    # The combined position + yaw equations must contain enough
+    # independent information to determine every polynomial coefficient.
+    if rank < degree + 1:
+        raise ValueError(
+            "Position/yaw observations do not fully constrain polynomial"
+        )
 
     return coefficients
 
@@ -144,7 +151,14 @@ def fit_lane_stream(graph, stream, cfg=None):
     )
 
     degree = min(cfg.degree, len(nodes) - 1)
-    sample_size = degree + 1
+
+    # Each oriented observation supplies two constraints:
+    #   x(z_i)  = x_i
+    #   x'(z_i) = cot(yaw_i)
+    #
+    # Therefore a quadratic (3 coefficients) can be constrained
+    # by two observations at different longitudinal positions.
+    sample_size = max(2, math.ceil((degree + 1) / 2))
     trials = (
         1
         if len(nodes) == sample_size
@@ -175,9 +189,10 @@ def fit_lane_stream(graph, stream, cfg=None):
 
         sample_z = z[sample_idx]
 
-        if np.unique(sample_z).size < sample_size:
-            continue
-
+        # We no longer require degree + 1 distinct z positions because yaw
+        # contributes derivative constraints. We still require some longitudinal
+        # separation; observations all at exactly the same z cannot determine
+        # the curvature of a quadratic.
         if np.ptp(sample_z) < cfg.min_sample_z_span:
             continue
 

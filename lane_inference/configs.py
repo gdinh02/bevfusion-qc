@@ -102,7 +102,7 @@ class LaneFitConfig:
     # Strength of the yaw/gradient constraint.
     # Roughly: a slope error is treated like the lateral error it would
     # produce after this many metres of travel.
-    yaw_constraint_length: float = 5.0
+    yaw_constraint_length: float = 2.0
 
 
 # ==============================================================================
@@ -175,7 +175,7 @@ class LaneBoundaryConfig:
     provisional_dedup_distance: float = 0.75
 
     # Diagnostic logging.
-    verbose: bool = False
+    verbose: bool = True
 
 
 # ==============================================================================

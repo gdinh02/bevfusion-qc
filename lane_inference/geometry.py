@@ -24,22 +24,29 @@ def pair_metrics(p_i, yaw_i, p_j, yaw_j):
     p_j = np.asarray(p_j, dtype=np.float64)
     delta = p_j - p_i
 
-    h_i = heading_from_yaw(yaw_i)
-    h_j = heading_from_yaw(yaw_j)
-    n_i = np.array([-h_i[1], h_i[0]])
-    n_j = np.array([-h_j[1], h_j[0]])
+    # Yaw represents an axis rather than a directed vector for lane
+    # compatibility: yaw and yaw + pi describe the same traffic axis.
+    # Compute the pair's mean axial heading using double-angle averaging.
+    mean_yaw = 0.5 * np.arctan2(
+        np.sin(2.0 * yaw_i) + np.sin(2.0 * yaw_j),
+        np.cos(2.0 * yaw_i) + np.cos(2.0 * yaw_j),
+    )
 
-    cross_track = 0.5 * (
-        abs(np.dot(n_i, delta)) + abs(np.dot(n_j, -delta))
+    heading = heading_from_yaw(mean_yaw)
+    normal = np.array(
+        [-heading[1], heading[0]],
+        dtype=np.float64,
     )
+
+    # Measure both distances relative to the shared traffic direction.
+    cross_track = abs(np.dot(normal, delta))
+    along_track = abs(np.dot(heading, delta))
+
+    # Heading disagreement remains an independent compatibility gate.
     yaw_diff = axial_angle_diff(yaw_i, yaw_j)
-    along_track = 0.5 * (
-        abs(np.dot(h_i, delta)) + abs(np.dot(h_j, -delta))
-    )
 
     return {
         "cross_track": float(cross_track),
         "yaw_diff": float(yaw_diff),
         "along_track": float(along_track),
     }
-

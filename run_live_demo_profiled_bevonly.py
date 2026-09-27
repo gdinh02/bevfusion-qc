@@ -7,6 +7,10 @@ Pipeline:
     Main CPU thread: lane inference + render + mask overlay + direct FFmpeg submission for frame N
 
     Example Usage: python run_live_demo_profiled_bevonly.py --input <path-to-nuscenes>/scene-0956 --output bev_masked.mp4 --no-display --mask-dir <path-to-gt-dir> --pred-dir <path-to-pred-dir>
+    Example Usage: 
+    python run_live_demo_profiled_bevonly.py `
+    --input Z:/dataset/scene-0956 --output bev_masked.mp4 `
+    --mask-dir Z:/dataset/mask --no-display --pred-dir Z:/dataset/scene-0956/pred
 """
 from __future__ import annotations
 

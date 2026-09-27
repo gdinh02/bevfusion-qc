@@ -10,9 +10,9 @@ Examples:
         --input Z:/dataset/scene-0956 --output gt_bev.mp4
 
     python run_live_demo_profiled_gt_bevonly.py `
-        --input Z:/dataset/scene-0095 --output gt_bev.mp4 `
+        --input Z:/dataset/scene-0956 --output gt_bev.mp4 `
         --mask-dir Z:/dataset/mask --no-display `
-        --pred-dir Z:/dataset/scene-0095/pred
+        --pred-dir Z:/dataset/scene-0956/pred
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ import run_live_demo_bev as base
 from nuscenes_gt_integration.gt_adaptor import extract_vehicles_from_gt
 from nuscenes_gt_integration.pipeline import GTLanePipeline
 from run_live_demo_profiled_prefetch import DirectFFmpegWriter, _ms
-
+from lane_inference.configs import LaneBoundaryConfig
 
 PROFILE_ORDER = (
     "gt_lane_pipeline",
@@ -99,6 +99,42 @@ def render_gt_frame(
 
     t0 = time.perf_counter()
     graph, streams, boundaries, vehicle_count = lane_pipeline.process(frame)
+
+    if LaneBoundaryConfig.verbose == True:
+        frame_id = int(frame["frame_index"])
+        graph = lane_pipeline.last_graph
+        streams = lane_pipeline.last_streams
+        fits = lane_pipeline.last_fits
+
+        stream_for_node = {
+            node: stream_id
+            for stream_id, stream in enumerate(streams)
+            for node in stream
+        }
+
+        fit_inliers = {
+            node
+            for fit in fits
+            for node in fit.get("inliers", [])
+        }
+
+        print("\nCURRENT GT VEHICLES IN GRAPH")
+
+        for node, v in graph.nodes(data=True):
+            if int(v.get("frame_index", -1)) != frame_id:
+                continue
+
+            print(
+                f"node={node:3d} "
+                f"track={v.get('track_id')} "
+                f"x={v['x']:6.2f} "
+                f"z={v['z']:6.2f} "
+                f"yaw={np.degrees(v['yaw']):6.1f} "
+                f"degree={graph.degree[node]:2d} "
+                f"stream={stream_for_node.get(node)} "
+                f"fit_inlier={node in fit_inliers}"
+            )
+
     timings["gt_lane_pipeline"] = _ms(t0)
 
     # Draw every exported vehicle, not only the subset admitted as lane
