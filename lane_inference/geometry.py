@@ -1,22 +1,41 @@
 import numpy as np
 
-'''
-Just some helper functions to do math u know how it is
 
-from geometry import (
-    axial_angle_diff,
-    heading_from_yaw,
-    pair_metrics,
-)
-'''
+def signed_heading_angle_diff(a, b):
+    """
+    Signed directed angular difference a - b in [-pi, pi).
+
+    Unlike axial logic, headings separated by pi remain opposite:
+        90 deg vs 270 deg -> 180 deg
+    """
+    return (
+        np.asarray(a) - np.asarray(b) + np.pi
+    ) % (2.0 * np.pi) - np.pi
+
+
+def heading_angle_diff(a, b):
+    """
+    Smallest directed-heading separation in [0, pi].
+    """
+    return np.abs(signed_heading_angle_diff(a, b))
+
 
 def axial_angle_diff(a, b):
+    """
+    Directionless orientation difference.
+
+    Keep this ONLY for geometry which fundamentally cannot distinguish
+    yaw from yaw + pi, such as an x(z) polynomial tangent.
+    """
     diff = np.mod(np.abs(a - b), np.pi)
     return np.minimum(diff, np.pi - diff)
 
 
 def heading_from_yaw(yaw):
-    return np.array([np.cos(yaw), np.sin(yaw)], dtype=np.float64)
+    return np.array(
+        [np.cos(yaw), np.sin(yaw)],
+        dtype=np.float64,
+    )
 
 
 def pair_metrics(p_i, yaw_i, p_j, yaw_j):
@@ -24,12 +43,16 @@ def pair_metrics(p_i, yaw_i, p_j, yaw_j):
     p_j = np.asarray(p_j, dtype=np.float64)
     delta = p_j - p_i
 
-    # Yaw represents an axis rather than a directed vector for lane
-    # compatibility: yaw and yaw + pi describe the same traffic axis.
-    # Compute the pair's mean axial heading using double-angle averaging.
-    mean_yaw = 0.5 * np.arctan2(
-        np.sin(2.0 * yaw_i) + np.sin(2.0 * yaw_j),
-        np.cos(2.0 * yaw_i) + np.cos(2.0 * yaw_j),
+    # Preserve direction. Find the shortest DIRECTED angular displacement
+    # from yaw_i to yaw_j, then take its midpoint.
+    yaw_delta = float(
+        signed_heading_angle_diff(yaw_j, yaw_i)
+    )
+
+    mean_yaw = float(
+        (yaw_i + 0.5 * yaw_delta + np.pi)
+        % (2.0 * np.pi)
+        - np.pi
     )
 
     heading = heading_from_yaw(mean_yaw)
@@ -38,15 +61,17 @@ def pair_metrics(p_i, yaw_i, p_j, yaw_j):
         dtype=np.float64,
     )
 
-    # Measure both distances relative to the shared traffic direction.
     cross_track = abs(np.dot(normal, delta))
     along_track = abs(np.dot(heading, delta))
 
-    # Heading disagreement remains an independent compatibility gate.
-    yaw_diff = axial_angle_diff(yaw_i, yaw_j)
+    # IMPORTANT: directed heading difference, not axial difference.
+    yaw_diff = float(
+        heading_angle_diff(yaw_i, yaw_j)
+    )
 
     return {
         "cross_track": float(cross_track),
-        "yaw_diff": float(yaw_diff),
+        "yaw_diff": yaw_diff,
         "along_track": float(along_track),
+        "mean_heading_yaw": mean_yaw,
     }

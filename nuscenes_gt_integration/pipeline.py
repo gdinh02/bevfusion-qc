@@ -15,7 +15,7 @@ from lane_inference.configs import (
     LeadVehicleConfig,
     TemporalConfig,
 )
-from lane_inference.geometry import axial_angle_diff
+from lane_inference.geometry import heading_angle_diff
 from lane_inference.lane_boundaries import (
     infer_lane_boundaries,
 )
@@ -172,29 +172,34 @@ class GTLanePipeline:
             self.evidence_cfg.max_forward_yaw_diff_deg
         )
 
-        # Canonical x-right/z-forward convention:
-        # yaw = pi/2 points along +z.
-        forward_yaw = 0.5 * math.pi
+        # Canonical x-right/z-forward coordinates.
+        forward_yaw = 0.5 * math.pi       # +z
+        reverse_yaw = -0.5 * math.pi      # -z
 
         filtered = []
 
         for vehicle in vehicles:
             z = float(vehicle["z"])
 
-            # Preserve the existing BEVFusion lane behaviour, which uses
-            # evidence both ahead and behind the reference vehicle.
             if abs(z) > self.graph_cfg.max_depth:
                 continue
 
-            if (
-                self.evidence_cfg.enable_yaw_filter
-                and axial_angle_diff(
-                    float(vehicle["yaw"]),
+            if self.evidence_cfg.enable_yaw_filter:
+                yaw = float(vehicle["yaw"])
+
+                forward_error = heading_angle_diff(
+                    yaw,
                     forward_yaw,
                 )
-                > max_yaw_diff
-            ):
-                continue
+                reverse_error = heading_angle_diff(
+                    yaw,
+                    reverse_yaw,
+                )
+
+                # Keep vehicles travelling in EITHER longitudinal direction,
+                # but do not collapse those directions into one orientation.
+                if min(forward_error, reverse_error) > max_yaw_diff:
+                    continue
 
             filtered.append(vehicle)
 

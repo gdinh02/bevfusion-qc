@@ -5,7 +5,7 @@ from lane_inference.configs import(
     TemporalConfig,
 )
 
-from lane_inference.geometry import axial_angle_diff
+from lane_inference.geometry import heading_angle_diff
 
 '''
 Code to track past vehicle detections and move them into the 
@@ -61,7 +61,7 @@ def transform_vehicles_to_reference(
 def _track_cost(track, detection, max_yaw_diff):
     if track["label"] != detection["label"]:
         return None
-    if axial_angle_diff(track["yaw"], detection["yaw"]) > max_yaw_diff:
+    if heading_angle_diff(track["yaw"], detection["yaw"]) > max_yaw_diff:
         return None
     return float(
         np.hypot(

@@ -13,6 +13,7 @@ from lane_inference.configs import(
 
 from lane_inference.geometry import (
     axial_angle_diff,
+    heading_angle_diff,
     heading_from_yaw,
     pair_metrics,
 )
@@ -234,15 +235,21 @@ def ensure_lead_vehicle_stream(
     if not current_nodes:
         return streams, lane_fits, diagnostic
 
-    forward_yaw = -0.5 * math.pi
+    forward_yaw = 0.5 * math.pi
     max_yaw_diff = math.radians(cfg.max_forward_yaw_diff_deg)
     aligned_nodes = [
         node
         for node in current_nodes
-        if axial_angle_diff(graph.nodes[node]["yaw"], forward_yaw)
-        <= max_yaw_diff
+        if heading_angle_diff(
+            graph.nodes[node]["yaw"],
+            forward_yaw,
+        ) <= max_yaw_diff
     ]
-    candidates = aligned_nodes or current_nodes
+    if not aligned_nodes:
+        diagnostic["status"] = "no_forward_aligned_vehicle"
+        return streams, lane_fits, diagnostic
+
+    candidates = aligned_nodes
 
     # Angular proximity to the optical axis identifies "the car in front"
     # more reliably than x alone at different depths. Prefer the nearer car
@@ -358,6 +365,8 @@ def ensure_lead_vehicle_stream(
             "anchor_slope": float(slope),
             "z_min": z_min,
             "z_max": z_max,
+            "mean_heading_yaw": float(lead["yaw"]),
+            "heading_resultant": 1.0,
         }
     )
     return streams, lane_fits, diagnostic

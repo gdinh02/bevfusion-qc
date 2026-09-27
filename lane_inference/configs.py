@@ -128,6 +128,10 @@ class LaneMergeConfig:
     # Safety cap for iterative pairwise merging.
     max_iterations: int = 50
 
+    # Directed traffic-heading compatibility. Opposite-direction
+    # streams must never be merged even if their x(z) geometry agrees.
+    max_heading_diff_deg: float = 15.0
+
 
 # ==============================================================================
 # Lead-vehicle fallback

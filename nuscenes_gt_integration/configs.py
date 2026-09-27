@@ -12,6 +12,6 @@ class GTLaneEvidenceConfig:
 
     enable_yaw_filter: bool = True
 
-    # Canonical lane-frame forward is yaw = +/- pi/2.
-    # 22.5 deg matches the existing BEVFusion pi/8 filter.
+    # Accept vehicles travelling approximately along either +z or -z.
+    # The two directions remain distinct downstream.
     max_forward_yaw_diff_deg: float = 22.5

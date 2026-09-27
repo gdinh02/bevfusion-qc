@@ -65,23 +65,35 @@ def extract_vehicles_from_bevfusion(bboxes, scores, labels, cfg=None):
         })
     return vehicles
 
-def yaw_filter(bboxes, direction = np.pi, span = np.pi/12):
-    # filter_check = [False] * len(bboxes)
+def yaw_filter(
+    bboxes,
+    direction=np.pi,
+    span=np.pi / 12,
+):
+    result = []
 
-    # forward = (direction - span, direction + span)
-    # backward = ((direction - np.pi) - span, (direction - np.pi) + span)
+    opposite_direction = direction + np.pi
 
-    # for i, box in enumerate(bboxes):
-    #     yaw = box[6] % (2 * np.pi)
-    #     if (yaw > forward[0] and yaw < forward[1]) or (yaw > backward[0] and yaw < backward[1]):
-    #         filter_check[i] = True
+    for box in bboxes:
+        yaw = float(box[6])
 
-    # return filter_check
-    return [
-        abs((float(box[6]) - direction + np.pi / 2) % np.pi - np.pi / 2)
-        <= span
-        for box in bboxes
-    ]
+        forward_error = abs(
+            (yaw - direction + np.pi)
+            % (2.0 * np.pi)
+            - np.pi
+        )
+
+        reverse_error = abs(
+            (yaw - opposite_direction + np.pi)
+            % (2.0 * np.pi)
+            - np.pi
+        )
+
+        result.append(
+            min(forward_error, reverse_error) <= span
+        )
+
+    return result
 
 def vectorized_yaw_filter(
     bboxes: torch.Tensor | np.ndarray,
@@ -96,13 +108,57 @@ def vectorized_yaw_filter(
     """
     if torch.is_tensor(bboxes):
         yaw = bboxes[:, 6]
+
         direction_t = yaw.new_tensor(direction)
-        half_pi = yaw.new_tensor(np.pi / 2)
+        opposite_t = direction_t + yaw.new_tensor(np.pi)
+
         pi = yaw.new_tensor(np.pi)
-        wrapped = torch.remainder(yaw - direction_t + half_pi, pi) - half_pi
-        return torch.abs(wrapped) <= span
+        two_pi = yaw.new_tensor(2.0 * np.pi)
+
+        forward_diff = (
+            torch.remainder(
+                yaw - direction_t + pi,
+                two_pi,
+            )
+            - pi
+        )
+
+        reverse_diff = (
+            torch.remainder(
+                yaw - opposite_t + pi,
+                two_pi,
+            )
+            - pi
+        )
+
+        return (
+            (torch.abs(forward_diff) <= span)
+            | (torch.abs(reverse_diff) <= span)
+        )
+
 
     bboxes_np = np.asarray(bboxes)
     yaw = bboxes_np[:, 6]
-    wrapped = np.remainder(yaw - direction + np.pi / 2, np.pi) - np.pi / 2
-    return np.abs(wrapped) <= span
+
+    opposite_direction = direction + np.pi
+
+    forward_diff = (
+        np.remainder(
+            yaw - direction + np.pi,
+            2.0 * np.pi,
+        )
+        - np.pi
+    )
+
+    reverse_diff = (
+        np.remainder(
+            yaw - opposite_direction + np.pi,
+            2.0 * np.pi,
+        )
+        - np.pi
+    )
+
+    return (
+        (np.abs(forward_diff) <= span)
+        | (np.abs(reverse_diff) <= span)
+    )

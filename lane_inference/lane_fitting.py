@@ -2,7 +2,10 @@ import math
 import numpy as np
 
 from lane_inference.configs import LaneFitConfig, LaneMergeConfig
-from lane_inference.geometry import axial_angle_diff
+from lane_inference.geometry import (
+    axial_angle_diff,
+    heading_angle_diff,
+)
 
 '''
 from lane_fitting import (
@@ -227,6 +230,10 @@ def fit_lane_stream(graph, stream, cfg=None):
 
         lateral_error = np.abs(x - predicted_x)
 
+        # INTENTIONAL axial comparison:
+        # x(z) describes directionless lane geometry, so its tangent cannot
+        # distinguish yaw from yaw + pi. Directed traffic identity is enforced
+        # by the graph and retained separately in the fit metadata.
         yaw_error = axial_angle_diff(
             predicted_yaw,
             yaw,
@@ -349,6 +356,49 @@ def fit_lane_stream(graph, stream, cfg=None):
     else:
         track_support = "weak"
 
+    # Preserve the directed traffic heading separately from the
+    # directionless x(z) polynomial geometry.
+    heading_weights = np.clip(
+        inlier_scores,
+        1e-6,
+        None,
+    )
+
+    heading_x = float(
+        np.sum(
+            heading_weights
+            * np.cos(inlier_yaw)
+        )
+    )
+
+    heading_z = float(
+        np.sum(
+            heading_weights
+            * np.sin(inlier_yaw)
+        )
+    )
+
+    heading_norm = float(
+        np.hypot(heading_x, heading_z)
+    )
+
+    if heading_norm < 1e-8:
+        # This would indicate contradictory directed headings within
+        # what is supposed to be one traffic stream.
+        return None
+
+    mean_heading_yaw = float(
+        np.arctan2(
+            heading_z,
+            heading_x,
+        )
+    )
+
+    heading_resultant = float(
+        heading_norm
+        / np.sum(heading_weights)
+    )
+
     return {
         "degree": degree,
         "coefficients": final_coefficients.copy(),
@@ -374,6 +424,8 @@ def fit_lane_stream(graph, stream, cfg=None):
         "num_tracks": num_tracks,
         "has_track_info": has_track_info,
         "track_support": track_support,
+        "mean_heading_yaw": mean_heading_yaw,
+        "heading_resultant": heading_resultant,
     }
 
 def fit_lane_streams(graph, streams, cfg=None):
@@ -431,6 +483,30 @@ def _fit_linear_merge_proxy(graph, fit):
 
 def _lane_fit_comparison(graph, a, b, cfg):
     """Compare two fitted stream fragments for same-lane compatibility."""
+    heading_diff = float(
+        heading_angle_diff(
+            a["mean_heading_yaw"],
+            b["mean_heading_yaw"],
+        )
+    )
+
+    heading_diff_deg = math.degrees(
+        heading_diff
+    )
+
+    if heading_diff_deg > cfg.max_heading_diff_deg:
+        return {
+            "compatible": False,
+            "longitudinal_gap": np.inf,
+            "max_lateral_disagreement": np.inf,
+            "median_lateral_disagreement": np.inf,
+            "max_tangent_diff_deg": np.inf,
+            "heading_diff_deg": float(
+                heading_diff_deg
+            ),
+            "score": np.inf,
+        }
+
     if a["z_max"] < b["z_min"]:
         longitudinal_gap = float(b["z_min"] - a["z_max"])
         z_start, z_end = a["z_max"], b["z_min"]
@@ -450,6 +526,7 @@ def _lane_fit_comparison(graph, a, b, cfg):
             "median_lateral_disagreement": np.inf,
             "max_tangent_diff_deg": np.inf,
             "score": np.inf,
+            "heading_diff_deg": float(heading_diff_deg),
         }
 
     if abs(z_end - z_start) < 1e-9:
@@ -474,14 +551,23 @@ def _lane_fit_comparison(graph, a, b, cfg):
     max_tangent_deg = float(math.degrees(tangent_diff))
 
     compatible = (
-        max_lateral <= cfg.max_lateral_disagreement
+        heading_diff_deg <= cfg.max_heading_diff_deg
+        and max_lateral <= cfg.max_lateral_disagreement
         and max_tangent_deg <= cfg.max_tangent_diff_deg
     )
 
     score = (
-        longitudinal_gap / max(cfg.max_longitudinal_gap, 1e-6)
-        + max_lateral / max(cfg.max_lateral_disagreement, 1e-6)
-        + max_tangent_deg / max(cfg.max_tangent_diff_deg, 1e-6)
+        longitudinal_gap
+        / max(cfg.max_longitudinal_gap, 1e-6)
+
+        + max_lateral
+        / max(cfg.max_lateral_disagreement, 1e-6)
+
+        + max_tangent_deg
+        / max(cfg.max_tangent_diff_deg, 1e-6)
+
+        + heading_diff_deg
+        / max(cfg.max_heading_diff_deg, 1e-6)
     )
 
     return {
@@ -491,6 +577,7 @@ def _lane_fit_comparison(graph, a, b, cfg):
         "median_lateral_disagreement": median_lateral,
         "max_tangent_diff_deg": max_tangent_deg,
         "score": float(score),
+        "heading_diff_deg": float(heading_diff_deg),
     }
 
 def merge_compatible_lane_streams(
