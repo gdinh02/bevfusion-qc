@@ -21,6 +21,7 @@ import queue
 import re
 import threading
 import time
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from statistics import mean
@@ -201,7 +202,7 @@ def render_inference_result(
     app: ProfiledPrefetchBEVFusionAppCustom,
     lane_pipeline: ProfiledOptimizedLanePipeline,
     result: InferenceResult,
-    lane_only: False # For eval predictions
+    lane_only: bool = False # For eval predictions
 ):
     """CPU-only ordered post-processing for one completed inference result.
     Modified to output ONLY a 20x20m BEV map.
@@ -247,11 +248,6 @@ def render_inference_result(
     # 3. Crop BEV to exactly 20m x 20m
     target_size_px = int(20.0 * base.PIXELS_PER_METER)
     h, w = bev.shape[:2]
-    
-    # start_y = max(0, (h - target_size_px) // 2)
-    # end_y = min(h, start_y + target_size_px)
-    # start_x = max(0, (w - target_size_px) // 2)
-    # end_x = min(w, start_x + target_size_px)
     
     # Perform the crop
     bev_20x20 = bev#[start_y:end_y, start_x:end_x]
@@ -314,6 +310,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--mask-dir", type=str, default=None, help="Directory containing mask videos")
     parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
+    parser.add_argument("--vehicles-dir", type=str, default=None, help="Directory to save per-frame vehicle locations in JSON format")
     custom_args, remaining_argv = parser.parse_known_args(argv)
     
     # Parse standard arguments using remaining argv
@@ -384,6 +381,10 @@ def main(argv=None):
     if custom_args.pred_dir:
         os.makedirs(custom_args.pred_dir, exist_ok=True)
         print(f"Saving bitmasks to: {custom_args.pred_dir}")
+        
+    if custom_args.vehicles_dir:
+        os.makedirs(custom_args.vehicles_dir, exist_ok=True)
+        print(f"Saving per-frame JSON predicted vehicle locations to: {custom_args.vehicles_dir}")
 
     try:
         while True:
@@ -400,6 +401,41 @@ def main(argv=None):
                 True if custom_args.pred_dir else False # Disable drawing cars and stuff when getting eval result
             )
             timings["inference_wait_main"] = inference_wait_ms
+
+            # --- SAVE PREDICTED CAR LOCATIONS ---
+            if custom_args.vehicles_dir:
+                frame_vehicles = []
+                for bbox, label, score in zip(result.bboxes, result.labels, result.scores):
+                    # Bbox layout matches renderer expectations: 
+                    # [x-right, y-forward, z-up, width, length, height, yaw, vx, vy]
+                    frame_vehicles.append({
+                        "visualisation_label": int(label),
+                        "score": float(score),
+                        "bev_transformed": {
+                            "x_right": float(bbox[0]),
+                            "y_forward": float(bbox[1]),
+                            "z_up": float(bbox[2]),
+                            "width": float(bbox[3]),
+                            "length": float(bbox[4]),
+                            "height": float(bbox[5]),
+                            "yaw_inverted": float(bbox[6]),
+                            "vx": float(bbox[7]) if len(bbox) > 7 else 0.0,
+                            "vy": float(bbox[8]) if len(bbox) > 8 else 0.0,
+                        }
+                    })
+                
+                frame_data = {
+                    "playback_index": result.item.frame_id,
+                    "frame_index": result.item.frame_id,
+                    "token": result.item.frame["token"],
+                    "vehicles_count": len(frame_vehicles),
+                    "vehicles": frame_vehicles
+                }
+                
+                json_path = os.path.join(custom_args.vehicles_dir, f"{scene_name}_{result.item.frame_id:04d}_vehicles.json")
+                with open(json_path, "w") as f:
+                    json.dump(frame_data, f, indent=4)
+            # ------------------------------------
 
             if custom_args.pred_dir:
                 inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
@@ -470,7 +506,7 @@ def main(argv=None):
 
             print(
                 f"[{result.item.frame_id + 1:>3}/{len(frames)}] "
-                f"{result.item.frame['token']} | vehicles: {vehicles} | "
+                f"{result.item.frame['token']} | predicted vehicles: {len(frame_vehicles) if custom_args.vehicles_dir else 'N/A'} | "
                 f"lane streams: {streams}",
                 flush=True,
             )
