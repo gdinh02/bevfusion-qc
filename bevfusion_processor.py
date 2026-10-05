@@ -280,7 +280,7 @@ class BEVFusionLiveProcessor:
         if hasattr(self, 'prefetcher'):
             self.prefetcher.close()
 
-    def process_next(self, scene_name: str, frame_idx: int | None = None) -> tuple[int, np.ndarray, dict] | None:
+    def process(self, scene_name: str, frame_idx: int | None = None) -> tuple[int, np.ndarray, dict] | None:
         """
         Pulls the next inference result from the worker thread, renders the lane prediction, 
         and extracts a 2D bitmask.
@@ -341,7 +341,7 @@ class BEVFusionLiveProcessor:
         # Update the expected pointer for the next loop
         self.expected_frame_id = processed_frame_id + 1
 
-        return processed_frame_id, inf_bitmask, timings
+        return processed_frame_id, inf_bitmask, vehicles_count, timings
 
     def close(self):
         """Safely shut down the worker threads."""
@@ -356,7 +356,7 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
 
     # Define the scene we are testing
-    current_scene = "scene-0399"
+    current_scene = "scene-0277"
 
     print(f"Pipeline started. Testing scene: {current_scene}")
     try:
@@ -364,7 +364,7 @@ def main():
         print("\n--- Testing Sequential Processing (Frames 0-2) ---")
         for _ in range(3):
             # Notice we MUST pass scene_name now
-            result = processor.process_next(scene_name=current_scene)
+            result = processor.process(scene_name=current_scene)
             
             if result is None:
                 break
@@ -379,7 +379,7 @@ def main():
         # --- TEST 2: Seek logic ---
         print("\n--- Testing Seek Logic: Jumping to Frame 15 ---")
         # Passing frame_idx=15 will trigger the internal flush and restart
-        result = processor.process_next(scene_name=current_scene, frame_idx=15)
+        result = processor.process(scene_name=current_scene, frame_idx=15)
         if result is not None:
             frame_id, bev_bitmask, timings = result
             print(f"Jumped to frame {frame_id:04d} | Inference Time: {timings.get('inference_stage_wall', 0):.1f}ms")
@@ -392,7 +392,7 @@ def main():
         print("\n--- Testing Resume Sequential (Frames 16+) ---")
         while True:
             # Leaving frame_idx=None continues sequentially from 16
-            result = processor.process_next(scene_name=current_scene)
+            result = processor.process(scene_name=current_scene)
             
             if result is None:
                 print("End of sequence.")
