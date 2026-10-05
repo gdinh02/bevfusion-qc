@@ -350,14 +350,16 @@ def render_gt_pipeline_bev(
     # ---------------------------------------------------------
 
     for fit in pipeline.last_fits:
-        z_start = max(
-            float(fit["z_min"]),
-            z_min,
-        )
-        z_end = min(
-            float(fit["z_max"]),
-            z_max,
-        )
+        # z_start = max(
+        #     float(fit["z_min"]),
+        #     z_min,
+        # )
+        # z_end = min(
+        #     float(fit["z_max"]),
+        #     z_max,
+        # )
+        z_start = max(-20.0, z_min)
+        z_end = min(20.0, z_max)
 
         if z_end <= z_start:
             continue

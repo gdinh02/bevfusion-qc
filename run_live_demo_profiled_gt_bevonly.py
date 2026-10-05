@@ -10,9 +10,9 @@ Examples:
         --input Z:/dataset/scene-0956 --output gt_bev.mp4
 
     python run_live_demo_profiled_gt_bevonly.py `
-        --input Z:/dataset/scene-0956 --output gt_bev.mp4 `
+        --input Z:/dataset/scene-0095 --output gt_bev.mp4 `
         --mask-dir Z:/dataset/mask --no-display `
-        --pred-dir Z:/dataset/scene-0956/pred
+        --pred-dir Z:/dataset/scene-0095/pred
 """
 from __future__ import annotations
 
@@ -274,6 +274,7 @@ def main(argv=None):
         help="Directory containing mask videos",
     )
     parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
+    # parser.add_argument("--render_dist", type=int, default=None, help="Forward render distance in metres")
 
     custom_args, remaining_argv = parser.parse_known_args(argv)
     args = base.parse_args(remaining_argv)

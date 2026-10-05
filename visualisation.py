@@ -94,8 +94,10 @@ def draw_lane_boundaries_on_bev(canvas, boundaries, pixels_per_meter):
 
     for boundary in boundaries:
         # Get the start and end depth of the curve
-        z_min = float(boundary["z_min"])
-        z_max = float(boundary["z_max"])
+        # z_min = float(boundary["z_min"])
+        # z_max = float(boundary["z_max"])
+        z_min = -20
+        z_max = 20
         coeffs = boundary["coefficients"]
 
         # 1. Sample Z values (forward depth) along the boundary
