@@ -47,15 +47,24 @@ def _as_numpy(value: torch.Tensor | np.ndarray) -> np.ndarray:
 
 
 class LanePipeline:
-    def __init__(self):
-        self.bevfusion_cfg = BEVFusionConfig()
-        self.temporal_cfg = TemporalConfig()
-        self.graph_cfg = LaneGraphConfig()
-        self.fit_cfg = LaneFitConfig()
-        self.merge_cfg = LaneMergeConfig()
-        self.lead_cfg = LeadVehicleConfig()
-        self.boundary_cfg = LaneBoundaryConfig()
-        self.tracking_cfg = BoundaryTrackingConfig()
+    def __init__(self,
+        bevfusion_cfg = BEVFusionConfig(),
+        temporal_cfg = TemporalConfig(),
+        graph_cfg = LaneGraphConfig(),
+        fit_cfg = LaneFitConfig(),
+        merge_cfg = LaneMergeConfig(),
+        lead_cfg = LeadVehicleConfig(),
+        boundary_cfg = LaneBoundaryConfig(),
+        tracking_cfg = BoundaryTrackingConfig()             
+    ):
+        self.bevfusion_cfg  = bevfusion_cfg
+        self.temporal_cfg   = temporal_cfg
+        self.graph_cfg      = graph_cfg
+        self.fit_cfg        = fit_cfg
+        self.merge_cfg      = merge_cfg
+        self.lead_cfg       = lead_cfg
+        self.boundary_cfg   = boundary_cfg
+        self.tracking_cfg   = tracking_cfg
 
         self.history = deque(maxlen=self.temporal_cfg.history_frames)
         self.tracker_state = None
@@ -233,6 +242,8 @@ class LanePipeline:
             scores=_as_numpy(scores),
             labels=_as_numpy(labels),
         )
+
+
 
 
 class ProfiledOptimizedLanePipeline(LanePipeline):

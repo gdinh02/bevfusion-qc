@@ -3,6 +3,8 @@ nuscenes/*
 checkpoints/*
 __pycache__/*
 .vscode/*
+pred-dir
+eval-viz
 
 *.pyc
 *.code-workspace

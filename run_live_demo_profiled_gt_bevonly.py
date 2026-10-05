@@ -12,7 +12,8 @@ Examples:
     python run_live_demo_profiled_gt_bevonly.py `
         --input Z:/dataset/scene-0095 --output gt_bev.mp4 `
         --mask-dir Z:/dataset/mask --no-display `
-        --pred-dir Z:/dataset/scene-0095/pred
+        --pred-dir Z:/dataset/scene-0956/pred `
+        --vehicles-dir Z:/dataset/scene-0956/vehicles
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import glob
 import os
 import re
 import time
+import json
 from collections import defaultdict
 from statistics import mean
 
@@ -91,7 +93,7 @@ def gt_vehicles_to_visualisation_boxes(
 def render_gt_frame(
     lane_pipeline: GTLanePipeline,
     frame: dict,
-    lane_only: False # For eval predictions
+    lane_only: bool = False # Fixed type hint (was `lane_only: False`)
 ):
     """Run GT lane inference and render the existing 40 x 40 metre BEV."""
     timings: dict[str, float] = {}
@@ -174,7 +176,8 @@ def render_gt_frame(
     timings["bev_render"] = _ms(t0)
     timings["cpu_post_wall"] = _ms(post_start)
 
-    return bev, vehicle_count, len(streams), len(all_gt_vehicles), timings
+    # Modified to return the vehicle arrays for saving
+    return bev, vehicle_count, len(streams), all_gt_vehicles, bboxes, labels, timings
 
 
 def print_frame_profile(frame_id: int, timings: dict[str, float]) -> None:
@@ -274,7 +277,6 @@ def main(argv=None):
         help="Directory containing mask videos",
     )
     parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
-    # parser.add_argument("--render_dist", type=int, default=None, help="Forward render distance in metres")
 
     custom_args, remaining_argv = parser.parse_known_args(argv)
     args = base.parse_args(remaining_argv)
@@ -325,14 +327,60 @@ def main(argv=None):
     if custom_args.pred_dir:
         os.makedirs(custom_args.pred_dir, exist_ok=True)
         print(f"Saving bitmasks to: {custom_args.pred_dir}")
+        
+    if custom_args.vehicles_dir:
+        os.makedirs(custom_args.vehicles_dir, exist_ok=True)
+        print(f"Saving per-frame JSON vehicle locations to: {custom_args.vehicles_dir}")
 
     try:
         for playback_index, frame in enumerate(frames):
-            combined, vehicles, streams, exported_vehicles, timings = render_gt_frame(
+            combined, vehicles, streams, all_gt_vehicles, bboxes, labels, timings = render_gt_frame(
                 lane_pipeline,
                 frame,
-                True if custom_args.pred_dir else False # Disable drawing cars and stuff when getting eval result
+                True if custom_args.pred_dir else False
             )
+
+            # --- SAVE CAR LOCATIONS ---
+            if custom_args.vehicles_dir:
+                frame_vehicles = []
+                for v_raw, bbox, label in zip(all_gt_vehicles, bboxes, labels):
+                    frame_vehicles.append({
+                        "class_name": str(v_raw["class_name"]),
+                        "visualisation_label": int(label),
+                        "canonical": {
+                            "x": float(v_raw.get("x", 0.0)),
+                            "y": float(v_raw.get("y", 0.0)),
+                            "z": float(v_raw.get("z", 0.0)),
+                            "width": float(v_raw.get("width", 0.0)),
+                            "length": float(v_raw.get("length", 0.0)),
+                            "height": float(v_raw.get("height", 0.0)),
+                            "yaw": float(v_raw.get("yaw", 0.0)),
+                        },
+                        "bev_transformed": {
+                            "x_right": float(bbox[0]),
+                            "y_forward": float(bbox[1]),
+                            "z_up": float(bbox[2]),
+                            "width": float(bbox[3]),
+                            "length": float(bbox[4]),
+                            "height": float(bbox[5]),
+                            "yaw_inverted": float(bbox[6]),
+                            "vx": float(bbox[7]),
+                            "vy": float(bbox[8]),
+                        }
+                    })
+                
+                frame_data = {
+                    "playback_index": playback_index,
+                    "frame_index": int(frame["frame_index"]),
+                    "token": frame["token"],
+                    "vehicles_count": len(frame_vehicles),
+                    "vehicles": frame_vehicles
+                }
+                
+                json_path = os.path.join(custom_args.vehicles_dir, f"{scene_name}_{playback_index:04d}_vehicles.json")
+                with open(json_path, "w") as f:
+                    json.dump(frame_data, f, indent=4)
+            # ---------------------------
 
             if custom_args.pred_dir:
                 inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
@@ -408,7 +456,7 @@ def main(argv=None):
 
             print(
                 f"[{playback_index + 1:>3}/{len(frames)}] "
-                f"{frame['token']} | exported GT vehicles: {exported_vehicles} | "
+                f"{frame['token']} | exported GT vehicles: {len(all_gt_vehicles)} | "
                 f"lane-evidence vehicles: {vehicles} | lane streams: {streams}",
                 flush=True,
             )

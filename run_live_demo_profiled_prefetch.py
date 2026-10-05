@@ -104,6 +104,7 @@ class FramePrefetcher:
         camera_order: tuple[str, ...],
         frames: list[dict],
         depth: int = 2,
+        start_index: int = 0
     ) -> None:
         self.app = app
         self.root = root
@@ -112,6 +113,8 @@ class FramePrefetcher:
         self.queue: queue.Queue[object] = queue.Queue(maxsize=max(1, depth))
         self.stop_event = threading.Event()
         self.error: BaseException | None = None
+        self.start_index = start_index
+
         self._thread = threading.Thread(
             target=self._worker,
             name="bevfusion-frame-prefetch",
@@ -130,7 +133,9 @@ class FramePrefetcher:
 
     def _worker(self) -> None:
         try:
-            for frame_id, frame in enumerate(self.frames):
+            for frame_id in range(self.start_index, len(self.frames)):
+                frame = self.frames[frame_id]
+
                 if self.stop_event.is_set():
                     break
 
