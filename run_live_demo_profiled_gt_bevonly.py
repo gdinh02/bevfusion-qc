@@ -277,6 +277,8 @@ def main(argv=None):
         help="Directory containing mask videos",
     )
     parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
+    parser.add_argument("--vehicles-dir", type=str, default=None, help="Directory to save per-frame vehicle locations in JSON format")
+    # parser.add_argument("--render_dist", type=int, default=None, help="Forward render distance in metres")
 
     custom_args, remaining_argv = parser.parse_known_args(argv)
     args = base.parse_args(remaining_argv)
