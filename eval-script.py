@@ -5,54 +5,6 @@ import glob
 import argparse
 import json
 
-def create_vehicle_blob_mask(json_path, shape, ppm=20.0, padding_meters=10.0):
-    """
-    Creates a binary mask with a filled bounding box enclosing all vehicles.
-    """
-    H, W = shape
-    mask = np.zeros((H, W), dtype=np.uint8)
-    
-    if not os.path.exists(json_path):
-        print(f"Warning: Missing JSON {os.path.basename(json_path)}. Evaluating full image.")
-        return np.full((H, W), 255, dtype=np.uint8)
-        
-    with open(json_path, 'r') as f:
-        data = json.load(f)
-        
-    vehicles = data.get("vehicles", [])
-    if not vehicles:
-        return mask
-        
-    points = []
-    for v in vehicles:
-        bev = v.get("bev_transformed", {})
-        x_right = bev.get("x_right", 0.0)
-        y_forward = bev.get("y_forward", 0.0)
-        
-        px = int(W / 2 + x_right * ppm)
-        py = int(H / 2 - y_forward * ppm)
-
-        if (px < 0 or px > W or py < 0 or py > H):
-            continue
-
-        points.append([px, py])
-
-    if len(points) == 0:
-        return None
-        
-    points = np.array(points, dtype=np.int32)
-    x, y, w, h = cv2.boundingRect(points)
-    
-    padding_pixels = int(padding_meters * ppm)
-    start_x = max(0, x - padding_pixels)
-    start_y = max(0, y - padding_pixels)
-    end_x = min(W, x + w + padding_pixels)
-    end_y = min(H, y + h + padding_pixels)
-    
-    cv2.rectangle(mask, (start_x, start_y), (end_x, end_y), 255, -1)
-    
-    return mask
-
 def draw_vehicles_on_vis(vis_img, json_path, ppm=20.0):
     """
     Draws oriented vehicle bounding boxes onto the visualization image.
@@ -106,9 +58,9 @@ def draw_vehicles_on_vis(vis_img, json_path, ppm=20.0):
         cv2.circle(vis_img, (int(px), int(py)), 2, (0, 255, 255), -1)
 
 def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None, 
-                           dilation_kernel=5, ppm=20.0, padding=10.0):
+                           dilation_kernel=5, ppm=20.0):
     """
-    Evaluates GT and Pred masks with structural dilation, constrained to vehicle areas.
+    Evaluates GT and Pred masks with structural dilation over the full image area.
     """
     kernel = np.ones((dilation_kernel, dilation_kernel), np.uint8)
     gt_paths = glob.glob(os.path.join(gt_dir, '*_gt.png'))
@@ -143,15 +95,9 @@ def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
         gt_dilated = cv2.dilate(gt_bin, kernel, iterations=1)
         pred_dilated = cv2.dilate(pred_bin, kernel, iterations=1)
         
-        blob_mask = create_vehicle_blob_mask(json_path, gt_mask.shape, ppm=ppm, padding_meters=padding)
-
-        if blob_mask is None:
-            continue
-
-        blob_bool = blob_mask > 0
-        
-        gt_bool = (gt_dilated > 0) & blob_bool
-        pred_bool = (pred_dilated > 0) & blob_bool
+        # Evaluate on the full mask
+        gt_bool = gt_dilated > 0
+        pred_bool = pred_dilated > 0
         
         tp_mask = gt_bool & pred_bool
         fp_mask = pred_bool & ~gt_bool
@@ -168,11 +114,7 @@ def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
             vis_img[tp_mask] = [0, 255, 0]    # Green: True Positives
             vis_img[fp_mask] = [0, 0, 255]    # Red: False Positives
             
-            # 1. Draw the evaluation blob boundary in white
-            contours, _ = cv2.findContours(blob_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(vis_img, contours, -1, (255, 255, 255), 1, cv2.LINE_AA)
-            
-            # 2. Draw the vehicle bounding boxes in yellow
+            # Draw the vehicle bounding boxes in yellow
             draw_vehicles_on_vis(vis_img, json_path, ppm=ppm)
             
             vis_filename = filename.replace('_gt.png', '_vis.png')
@@ -184,7 +126,7 @@ def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
     f1_score = 2 * (precision * recall) / (precision + recall + epsilon)
     iou = total_tp / (total_tp + total_fp + total_fn + epsilon)
     
-    print(f"Evaluation Results (Dilation: {dilation_kernel}x{dilation_kernel} | Blob padding: {padding}m)")
+    print(f"Evaluation Results (Dilation: {dilation_kernel}x{dilation_kernel} | Full Mask)")
     print("-" * 65)
     print(f"Total Evaluated : {len(gt_paths)} frames")
     print(f"Precision       : {precision:.4f}")
@@ -197,14 +139,13 @@ def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
     return precision, recall, f1_score, iou
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate segmentation masks constrained to a vehicle blob.")
+    parser = argparse.ArgumentParser(description="Evaluate segmentation masks on the full image.")
     parser.add_argument("--gt", type=str, required=True, help="Directory containing ground truth *_gt.png masks.")
     parser.add_argument("--pred", type=str, required=True, help="Directory containing prediction *_pred.png masks.")
     parser.add_argument("--vehicles", type=str, required=True, help="Directory containing *_vehicles.json files.")
     parser.add_argument("--vis", type=str, default=None, help="Directory to save output visualisation RGB masks.")
     parser.add_argument("--kernel", type=int, default=5, help="Kernel size for structural dilation (default: 5).")
     parser.add_argument("--ppm", type=float, default=20.0, help="Pixels per meter used for BEV mapping (default: 20.0).")
-    parser.add_argument("--padding", type=float, default=10.0, help="Padding in meters around the vehicles to construct the evaluation blob (default: 10.0).")
     
     args = parser.parse_args()
     
@@ -214,6 +155,5 @@ if __name__ == "__main__":
         vehicles_dir=args.vehicles,
         output_dir=args.vis, 
         dilation_kernel=args.kernel,
-        ppm=args.ppm,
-        padding=args.padding
+        ppm=args.ppm
     )

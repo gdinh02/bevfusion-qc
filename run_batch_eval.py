@@ -103,7 +103,7 @@ def main():
             "--vehicles", PRED_DIR,
             "--kernel", "25",
             "--ppm", "33",
-            "--padding", "1"
+            # "--padding", "1"
         ]
         
         print(f"[{scene_id}] Running evaluation...")

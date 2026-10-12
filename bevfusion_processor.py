@@ -369,7 +369,7 @@ def main():
             if result is None:
                 break
                 
-            frame_id, bev_bitmask, timings = result
+            frame_id, bev_bitmask, vehicles_count, timings = result
             print(f"Processed frame {frame_id:04d} | Inference Time: {timings.get('inference_stage_wall', 0):.1f}ms")
 
             save_path = os.path.join(output_folder, f"{current_scene}_mask_{frame_id:04d}.png")
@@ -381,7 +381,7 @@ def main():
         # Passing frame_idx=15 will trigger the internal flush and restart
         result = processor.process(scene_name=current_scene, frame_idx=15)
         if result is not None:
-            frame_id, bev_bitmask, timings = result
+            frame_id, bev_bitmask, vehicles_count, timings = result
             print(f"Jumped to frame {frame_id:04d} | Inference Time: {timings.get('inference_stage_wall', 0):.1f}ms")
 
             save_path = os.path.join(output_folder, f"{current_scene}_mask_{frame_id:04d}.png")
@@ -398,7 +398,7 @@ def main():
                 print("End of sequence.")
                 break
                 
-            frame_id, bev_bitmask, timings = result
+            frame_id, bev_bitmask, vehicles_count, timings = result
             print(f"Processed frame {frame_id:04d} | Inference Time: {timings.get('inference_stage_wall', 0):.1f}ms")
 
             save_path = os.path.join(output_folder, f"{current_scene}_mask_{frame_id:04d}.png")

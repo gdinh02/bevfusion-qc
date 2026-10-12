@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """Export one nuScenes scene for gdinh02/bevfusion-qc camera-only inference.
 
-python tools/create_bevfusion_scene.py --scene scene-0038 --root Z:/dataset/nuscenes --output-base Z:/dataset/
+python tools/create_bevfusion_scene.py --root Z:/dataset/nuscenes --output-base Z:/dataset/
 
 Usage (run in an environment with nuscenes-devkit installed):
     python create_bevfusion_scene.py --scene scene-0095 \
         --root /path/to/nuscenes --output-base /path/to/exports
-
-Output:
-    scene-0095/samples/<CAMERA>/<image.jpg>
-    scene-0095/bevfusion_infos_scene-0095.pkl
 
 The PKL contains plain Python dictionaries/lists (no MMDetection3D objects):
     metainfo: schema, schema_version, scene_name, scene_token, dataset_version,
@@ -44,9 +40,6 @@ Reader outline (load only PKLs you generated/trust):
 
 The current run_demo.py must be adapted to this reader; it does not already
 consume this PKL. Model loading, detection and tracking are not run here.
-
-Adapted from gdinh02/mmdetection3d-fyp/nuscenes_tools/create_fcos3d_scene.py
-and gdinh02/bevfusion-qc/bevfusion_integration/nuscenes_helper.py.
 """
 from __future__ import annotations
 
@@ -80,6 +73,8 @@ def parse_args(argv=None):
                         help='Parent directory containing the new or existing scene folder')
     parser.add_argument('--version', default='v1.0-trainval',
                         choices=['v1.0-trainval', 'v1.0-mini', 'v1.0-test'])
+
+    parser.add_argument("--scenes-csv", required=False, help="Input eval scenes CSV")
     return parser.parse_args(argv)
 
 
