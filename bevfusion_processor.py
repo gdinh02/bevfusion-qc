@@ -351,7 +351,8 @@ class BEVFusionLiveProcessor:
 
 def main():
     # Only requires the dataset input directory
-    processor = BEVFusionLiveProcessor(input_dir="/home/gdtrinh/nuscenes/scenes-pkl")
+    # processor = BEVFusionLiveProcessor(input_dir="/home/gdtrinh/nuscenes/scenes-pkl")
+    processor = BEVFusionLiveProcessor(input_dir="Z:/dataset/scenes-pkl")
     output_folder = "./test_masks_output"
     os.makedirs(output_folder, exist_ok=True)
 

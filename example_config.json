@@ -1,0 +1,4 @@
+{
+  "graph_cfg.max_cross_track": 0.8,
+  "fit_cfg.residual_threshold": 0.4
+}

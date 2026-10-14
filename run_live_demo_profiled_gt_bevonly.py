@@ -35,6 +35,11 @@ from nuscenes_gt_integration.gt_adaptor import extract_vehicles_from_gt
 from nuscenes_gt_integration.pipeline import GTLanePipeline
 from run_live_demo_profiled_prefetch import DirectFFmpegWriter, _ms
 from lane_inference.configs import LaneBoundaryConfig
+from sweep_config import (
+    make_pipeline_kwargs,
+    load_overrides,
+    
+)
 
 PROFILE_ORDER = (
     "gt_lane_pipeline",
@@ -232,40 +237,38 @@ def overlay_transparent_mask(
     return result
 
 
-def _open_mask_video(mask_dir: str | None, input_path):
-    """Open the existing optional scene mask and return its frame range."""
+def _open_mask_videos(mask_dir: str | None, input_path):
+    """Open every matching MP4 and map absolute 0-based scene indices to each segment."""
     if not mask_dir:
-        return None, None
+        return []
 
     scene_name = os.path.basename(os.path.normpath(input_path))
-    search_pattern = os.path.join(mask_dir, f"{scene_name}_frames-*.mp4")
-    matched_files = sorted(glob.glob(search_pattern))
+    matched_files = sorted(glob.glob(os.path.join(mask_dir, f"{scene_name}_frames-*.mp4")))
+    segments = []
+    for video_path in matched_files:
+        filename = os.path.basename(video_path)
+        match = re.fullmatch(rf"{re.escape(scene_name)}_frames-(\d+)-(\d+)\.mp4", filename)
+        if match is None:
+            continue
+        start_frame, end_frame = map(int, match.groups())
+        if start_frame < 0 or end_frame < start_frame:
+            raise ValueError(f"Invalid GT segment range: {filename}")
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            cap.release()
+            raise RuntimeError(f"Could not open GT mask video: {video_path}")
+        segments.append((start_frame, end_frame, cap, video_path))
 
-    if not matched_files:
-        print(
-            f"No mask video found in {mask_dir} matching {scene_name}. "
-            "Proceeding without mask."
-        )
-        return None, None
+    segments.sort(key=lambda segment: (segment[0], segment[1]))
+    for previous, current in zip(segments, segments[1:]):
+        if current[0] <= previous[1]:
+            for _, _, cap, _ in segments:
+                cap.release()
+            raise ValueError(f"Overlapping GT mask frame ranges: {previous[3]} and {current[3]}")
 
-    mask_video_path = matched_files[0]
-    print(f"Found mask video: {mask_video_path}")
-
-    match = re.search(r"frames-(\d+)-(\d+)\.mp4$", os.path.basename(mask_video_path))
-    if match is None:
-        print(
-            "Could not parse start/end frames from mask filename. "
-            "Proceeding without mask."
-        )
-        return None, None
-
-    frame_range = (int(match.group(1)), int(match.group(2)))
-    mask_cap = cv2.VideoCapture(mask_video_path)
-    if not mask_cap.isOpened():
-        mask_cap.release()
-        raise RuntimeError(f"Could not open mask video: {mask_video_path}")
-
-    return mask_cap, frame_range
+    for first, last, _, video_path in segments:
+        print(f"Found GT mask video: {video_path} (scene frames {first}-{last})")
+    return segments
 
 
 def main(argv=None):
@@ -278,6 +281,7 @@ def main(argv=None):
     )
     parser.add_argument("--pred-dir", type=str, default=None, help="Directory to save prediction bitmasks")
     parser.add_argument("--vehicles-dir", type=str, default=None, help="Directory to save per-frame vehicle locations in JSON format")
+    parser.add_argument("--sweep-config", type=str, default=None, help="JSON file containing sweep parameter overrides")
     # parser.add_argument("--render_dist", type=int, default=None, help="Forward render distance in metres")
 
     custom_args, remaining_argv = parser.parse_known_args(argv)
@@ -298,22 +302,25 @@ def main(argv=None):
                 "the schema-v2 create_bevfusion_scene.py"
             )
 
-    mask_cap, frame_range = _open_mask_video(custom_args.mask_dir, root)
-    if frame_range is not None:
-        start_frame, end_frame = frame_range
-        if start_frame < 0 or end_frame < start_frame or end_frame >= len(frames):
+    mask_segments = _open_mask_videos(custom_args.mask_dir, root)
+    if custom_args.mask_dir and not mask_segments:
+        raise RuntimeError(f"No valid GT mask videos for scene {scene_name}")
+    if mask_segments:
+        if mask_segments[-1][1] >= len(frames):
             raise ValueError(
-                f"Mask frame range {start_frame}-{end_frame} is outside "
-                f"the exported scene range 0-{len(frames) - 1}"
+                f"GT mask segment ends at frame {mask_segments[-1][1]}, "
+                f"but scene only has {len(frames)} frames"
             )
-        frames = frames[start_frame : end_frame + 1]
-        timestamps = timestamps[start_frame : end_frame + 1]
-        print(
-            f"Slicing pipeline to process frames {start_frame} to {end_frame} "
-            f"(total: {len(frames)} frames)"
-        )
+        # Preserve temporal history across unlabeled gaps by processing frames from zero.
+        last_annotated_frame = mask_segments[-1][1]
+        frames = frames[:last_annotated_frame + 1]
+        timestamps = timestamps[:last_annotated_frame + 1]
+        print(f"Processing frames 0-{last_annotated_frame}; scoring annotated frames only")
+    segment_index = 0
 
-    lane_pipeline = GTLanePipeline()
+    lane_pipeline = GTLanePipeline(**make_pipeline_kwargs(
+        load_overrides(custom_args.sweep_config)
+    ))
 
     display_enabled = not args.no_display
     window = "nuScenes GT Lane Inference (BEV only)"
@@ -336,6 +343,15 @@ def main(argv=None):
 
     try:
         for playback_index, frame in enumerate(frames):
+            # Scene-index ranges are inclusive and zero-based, as in the MP4 names.
+            while segment_index < len(mask_segments) and playback_index > mask_segments[segment_index][1]:
+                segment_index += 1
+            active_segment = (
+                mask_segments[segment_index]
+                if segment_index < len(mask_segments)
+                and mask_segments[segment_index][0] <= playback_index <= mask_segments[segment_index][1]
+                else None
+            )
             combined, vehicles, streams, all_gt_vehicles, bboxes, labels, timings = render_gt_frame(
                 lane_pipeline,
                 frame,
@@ -343,7 +359,7 @@ def main(argv=None):
             )
 
             # --- SAVE CAR LOCATIONS ---
-            if custom_args.vehicles_dir:
+            if custom_args.vehicles_dir and active_segment is not None:
                 frame_vehicles = []
                 for v_raw, bbox, label in zip(all_gt_vehicles, bboxes, labels):
                     frame_vehicles.append({
@@ -384,7 +400,7 @@ def main(argv=None):
                     json.dump(frame_data, f, indent=4)
             # ---------------------------
 
-            if custom_args.pred_dir:
+            if custom_args.pred_dir and active_segment is not None:
                 inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
                 _, inf_bitmask = cv2.threshold(inf_gray, 1, 255, cv2.THRESH_BINARY)
                 
@@ -392,8 +408,11 @@ def main(argv=None):
                 cv2.imwrite(inf_save_path, inf_bitmask)
 
 
-            if mask_cap is not None and mask_cap.isOpened():
+            if active_segment is not None:
+                _, _, mask_cap, mask_path = active_segment
                 ret, mask_frame = mask_cap.read()
+                if not ret:
+                    raise RuntimeError(f"GT mask video ended early: {mask_path} at scene frame {playback_index}")
                 if ret:
                     if mask_frame.ndim == 3:
                         mask_frame = cv2.cvtColor(mask_frame, cv2.COLOR_BGR2GRAY)
@@ -416,7 +435,7 @@ def main(argv=None):
                         alpha=0.5,
                     )
                 else:
-                    print("Warning: Mask video ran out of frames before the pipeline.")
+                    raise RuntimeError(f"GT mask video ended early: {mask_path}")
 
             if writer is None:
                 writer = DirectFFmpegWriter(
@@ -475,8 +494,8 @@ def main(argv=None):
         print(f"Saved {output} using {timing}")
 
     finally:
-        if mask_cap is not None:
-            mask_cap.release()
+        for _, _, cap, _ in mask_segments:
+            cap.release()
         if writer is not None:
             try:
                 writer.close()

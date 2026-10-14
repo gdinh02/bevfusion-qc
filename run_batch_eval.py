@@ -6,7 +6,8 @@ import datetime
 
 def main():
     MASK_DIR = "./ground_truth_mask/"
-    SCENES_PKL_BASE_DIR = "/home/gdtrinh/nuscenes/scenes-pkl/"
+    # SCENES_PKL_BASE_DIR = "/home/gdtrinh/nuscenes/scenes-pkl/"
+    SCENES_PKL_BASE_DIR = "Z:/dataset/scenes-pkl"
     PRED_DIR = "./pred-dir"
     VIZ_DIR = "./eval-viz"
     SUMMARY_FILE = "evaluation_summary.txt"

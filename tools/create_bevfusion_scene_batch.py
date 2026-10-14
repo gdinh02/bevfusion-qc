@@ -4,8 +4,10 @@
 python tools/create_bevfusion_scene.py --root Z:/dataset/nuscenes --output-base Z:/dataset/
 
 Usage (run in an environment with nuscenes-devkit installed):
-    python create_bevfusion_scene.py --scene scene-0095 \
-        --root /path/to/nuscenes --output-base /path/to/exports
+    python tools/create_bevfusion_scene_batch.py `
+        --root "Z:/dataset/nuscenes" `
+        --output-base "Z:/dataset/scenes-pkl" `
+        --scenes-csv "failed_unique_scenes.csv"
 
 The PKL contains plain Python dictionaries/lists (no MMDetection3D objects):
     metainfo: schema, schema_version, scene_name, scene_token, dataset_version,
@@ -504,8 +506,23 @@ def main(argv=None):
     
     # 1. Determine which scenes to process
     # If args.scene is provided, put it in a list. Otherwise, extract all scene names.
-    if getattr(args, 'scene', None):
+    if args.scene:
         target_scenes = [args.scene]
+    elif args.scenes_csv:
+        import csv
+
+        with open(args.scenes_csv, newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            if "scene" not in (reader.fieldnames or []):
+                raise ValueError("CSV must contain a 'scene' column")
+
+            target_scenes = list(dict.fromkeys(
+                f"scene-{int(row['scene']):04d}"
+                if row['scene'].strip().isdigit()
+                else row['scene'].strip()
+                for row in reader
+                if row.get('scene') and row['scene'].strip()
+            ))
     else:
         target_scenes = [s['name'] for s in nusc.scene]
         
