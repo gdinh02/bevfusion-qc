@@ -10,10 +10,10 @@ Examples:
         --input Z:/dataset/scene-0956 --output gt_bev.mp4
 
     python run_live_demo_profiled_gt_bevonly.py `
-        --input Z:/dataset/scene-0095 --output gt_bev.mp4 `
+        --input Z:/dataset/scene-0399 --output gt_bev.mp4 `
         --mask-dir Z:/dataset/mask --no-display `
-        --pred-dir Z:/dataset/scene-0956/pred `
-        --vehicles-dir Z:/dataset/scene-0956/vehicles
+        --pred-dir Z:/dataset/scene-0399/pred `
+        --vehicles-dir Z:/dataset/scene-0399/vehicles
 """
 from __future__ import annotations
 
@@ -283,9 +283,19 @@ def main(argv=None):
     parser.add_argument("--vehicles-dir", type=str, default=None, help="Directory to save per-frame vehicle locations in JSON format")
     parser.add_argument("--sweep-config", type=str, default=None, help="JSON file containing sweep parameter overrides")
     # parser.add_argument("--render_dist", type=int, default=None, help="Forward render distance in metres")
+    parser.add_argument(
+        "--evaluation-only",
+        action="store_true",
+        help="Generate evaluation masks without demo rendering or video"
+    )
 
     custom_args, remaining_argv = parser.parse_known_args(argv)
     args = base.parse_args(remaining_argv)
+    if custom_args.evaluation_only:
+        if not custom_args.mask_dir or not custom_args.pred_dir:
+            raise ValueError("--evaluation-only requires --mask-dir and --pred-dir")
+        if not args.no_display:
+            raise ValueError("--evaluation-only requires --no-display")
 
     root, _camera_order, frames, timestamps, info_path = base.load_scene(args.input)
     print(
