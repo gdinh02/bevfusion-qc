@@ -15,6 +15,7 @@ launch a grid sweep.
 Example:
 
 python gt_sweep_eval.py --out-dir Z:/dataset/sweep_results/baseline --mask-dir Z:/dataset/mask --scenes-root Z:/dataset/scenes-pkl
+python gt_sweep_eval.py --out-dir Z:/dataset/sweep_results/baseline --mask-dir Z:/dataset/mask --scenes-root Z:/dataset/scenes-pkl
 """
 from __future__ import annotations
 
