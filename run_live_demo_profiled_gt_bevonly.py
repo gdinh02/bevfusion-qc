@@ -35,6 +35,7 @@ from nuscenes_gt_integration.gt_adaptor import extract_vehicles_from_gt
 from nuscenes_gt_integration.pipeline import GTLanePipeline
 from run_live_demo_profiled_prefetch import DirectFFmpegWriter, _ms
 from lane_inference.configs import LaneBoundaryConfig
+from lane_evaluation import rasterize_boundaries
 from sweep_config import (
     make_pipeline_kwargs,
     load_overrides,
@@ -411,8 +412,9 @@ def main(argv=None):
             # ---------------------------
 
             if custom_args.pred_dir and active_segment is not None:
-                inf_gray = cv2.cvtColor(combined, cv2.COLOR_BGR2GRAY)
-                _, inf_bitmask = cv2.threshold(inf_gray, 1, 255, cv2.THRESH_BINARY)
+                inf_bitmask = rasterize_boundaries(
+                    lane_pipeline.last_boundaries, combined.shape, base.PIXELS_PER_METER
+                )
                 
                 inf_save_path = os.path.join(custom_args.pred_dir, f"{scene_name}_{playback_index:04d}_pred.png")
                 cv2.imwrite(inf_save_path, inf_bitmask)

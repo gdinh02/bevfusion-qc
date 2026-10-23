@@ -5,18 +5,19 @@ import subprocess
 import datetime
 
 def main():
-    MASK_DIR = "./ground_truth_mask/"
+    MASK_DIR = "Z:/dataset/single-mask"
     # SCENES_PKL_BASE_DIR = "/home/gdtrinh/nuscenes/scenes-pkl/"
     SCENES_PKL_BASE_DIR = "Z:/dataset/scenes-pkl"
-    PRED_DIR = "./pred-dir"
-    VIZ_DIR = "./eval-viz"
+    PRED_DIR = "Z:/dataset/pred-dir"
+    VIZ_DIR = "Z:/dataset/eval-viz"
     SUMMARY_FILE = "evaluation_summary.txt"
-    MIN_FRAMES = 15
+    MIN_FRAMES = 30
 
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(SUMMARY_FILE, 'w') as f:
         f.write(f"Batch Evaluation Summary ({current_time})\n")
-        f.write("="*95 + "\n\n")
+        f.write("="*95 + "\n")
+        f.write("Metric: skeleton distance precision/recall; tolerance=0.3 m; ppm=33; IoU=exact skeleton overlap\n\n")
 
     if not os.path.exists(MASK_DIR):
         print(f"Error: Mask directory '{MASK_DIR}' not found.")
@@ -102,7 +103,7 @@ def main():
             "--pred", PRED_DIR,
             "--vis", VIZ_DIR,
             "--vehicles", PRED_DIR,
-            "--kernel", "25",
+            "--tolerance-m", "0.3",
             "--ppm", "33",
             # "--padding", "1"
         ]
@@ -142,9 +143,9 @@ def main():
         else:
             print(f"[{scene_id}] Error: Could not parse metrics.")
             
-        print(f"[{scene_id}] Cleaning up temporary folders...")
-        shutil.rmtree(PRED_DIR, ignore_errors=True)
-        shutil.rmtree(VIZ_DIR, ignore_errors=True)
+        # print(f"[{scene_id}] Cleaning up temporary folders...")
+        # shutil.rmtree(PRED_DIR, ignore_errors=True)
+        # shutil.rmtree(VIZ_DIR, ignore_errors=True)
 
     if recalls:
         avg_recall = sum(recalls) / len(recalls)

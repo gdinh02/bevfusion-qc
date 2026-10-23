@@ -57,103 +57,65 @@ def draw_vehicles_on_vis(vis_img, json_path, ppm=20.0):
         # Draw a small center dot
         cv2.circle(vis_img, (int(px), int(py)), 2, (0, 255, 255), -1)
 
-def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None, 
-                           dilation_kernel=5, ppm=20.0):
-    """
-    Evaluates GT and Pred masks with structural dilation over the full image area.
-    """
-    kernel = np.ones((dilation_kernel, dilation_kernel), np.uint8)
-    gt_paths = glob.glob(os.path.join(gt_dir, '*_gt.png'))
-    
+def evaluate_and_visualize(gt_dir, pred_dir, vehicles_dir, output_dir=None,
+                           tolerance_m=0.3, ppm=33.0):
+    from lane_evaluation import match_masks, metrics
+    gt_paths = sorted(glob.glob(os.path.join(gt_dir, '*_gt.png')))
     if not gt_paths:
-        print(f"No ground truth images found in {gt_dir}")
-        return
-        
+        raise ValueError(f"No ground truth images found in {gt_dir}")
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        
-    total_tp, total_fp, total_fn = 0, 0, 0
-    
+    totals = dict(predicted=0, ground_truth=0, matched_predicted=0,
+                  matched_ground_truth=0, intersection=0, union=0)
     for gt_path in gt_paths:
         filename = os.path.basename(gt_path)
-        pred_filename = filename.replace('_gt.png', '_pred.png')
-        json_filename = filename.replace('_gt.png', '_vehicles.json')
-        
-        pred_path = os.path.join(pred_dir, pred_filename)
-        json_path = os.path.join(vehicles_dir, json_filename)
-        
+        pred_path = os.path.join(pred_dir, filename.replace('_gt.png', '_pred.png'))
         if not os.path.exists(pred_path):
-            print(f"Warning: Missing prediction mask for {filename}")
-            continue
-            
+            raise FileNotFoundError(f"Missing prediction mask: {pred_path}")
         gt_mask = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
         pred_mask = cv2.imread(pred_path, cv2.IMREAD_GRAYSCALE)
-        
-        _, gt_bin = cv2.threshold(gt_mask, 127, 255, cv2.THRESH_BINARY)
-        _, pred_bin = cv2.threshold(pred_mask, 127, 255, cv2.THRESH_BINARY)
-        
-        gt_dilated = cv2.dilate(gt_bin, kernel, iterations=1)
-        pred_dilated = cv2.dilate(pred_bin, kernel, iterations=1)
-        
-        # Evaluate on the full mask
-        gt_bool = gt_dilated > 0
-        pred_bool = pred_dilated > 0
-        
-        tp_mask = gt_bool & pred_bool
-        fp_mask = pred_bool & ~gt_bool
-        fn_mask = gt_bool & ~pred_bool
-        
-        total_tp += np.sum(tp_mask)
-        total_fp += np.sum(fp_mask)
-        total_fn += np.sum(fn_mask)
-        
+        if gt_mask is None or pred_mask is None:
+            raise ValueError(f"Unreadable mask pair: {filename}")
+        counts, gt, pred, matched_gt, matched_pred = match_masks(
+            gt_mask, pred_mask, ppm, tolerance_m)
+        for key in totals:
+            totals[key] += counts[key]
         if output_dir:
-            vis_img = np.zeros((gt_mask.shape[0], gt_mask.shape[1], 3), dtype=np.uint8)
-            
-            vis_img[fn_mask] = [255, 0, 0]    # Blue: False Negatives
-            vis_img[tp_mask] = [0, 255, 0]    # Green: True Positives
-            vis_img[fp_mask] = [0, 0, 255]    # Red: False Positives
-            
-            # Draw the vehicle bounding boxes in yellow
-            draw_vehicles_on_vis(vis_img, json_path, ppm=ppm)
-            
-            vis_filename = filename.replace('_gt.png', '_vis.png')
-            cv2.imwrite(os.path.join(output_dir, vis_filename), vis_img)
-
-    epsilon = 1e-7
-    precision = total_tp / (total_tp + total_fp + epsilon)
-    recall = total_tp / (total_tp + total_fn + epsilon)
-    f1_score = 2 * (precision * recall) / (precision + recall + epsilon)
-    iou = total_tp / (total_tp + total_fp + total_fn + epsilon)
-    
-    print(f"Evaluation Results (Dilation: {dilation_kernel}x{dilation_kernel} | Full Mask)")
-    print("-" * 65)
+            vis = np.zeros((*gt.shape, 3), dtype=np.uint8)
+            vis[gt & ~matched_gt] = [255, 0, 0]
+            vis[matched_gt] = [0, 100, 0]
+            vis[pred & ~matched_pred] = [0, 0, 255]
+            vis[matched_pred] = [0, 255, 0]
+            draw_vehicles_on_vis(vis, os.path.join(vehicles_dir,
+                filename.replace('_gt.png', '_vehicles.json')), ppm)
+            cv2.imwrite(os.path.join(output_dir, filename.replace('_gt.png', '_vis.png')), vis)
+    precision, recall, f1, iou = metrics(totals)
+    print(f"Evaluation: skeleton distance matching | tolerance={tolerance_m:g} m | ppm={ppm:g}")
     print(f"Total Evaluated : {len(gt_paths)} frames")
     print(f"Precision       : {precision:.4f}")
     print(f"Recall          : {recall:.4f}")
-    print(f"F1 Score        : {f1_score:.4f}")
+    print(f"F1 Score        : {f1:.4f}")
+    # Exact skeleton IoU is retained for batch-parser compatibility. It does
+    # not use the distance tolerance and is not derived from tolerant P/R.
     print(f"IoU             : {iou:.4f}")
-    if output_dir:
-        print(f"Visualisations  : Saved to '{output_dir}'")
-    
-    return precision, recall, f1_score, iou
+    print("IoU definition  : exact skeleton pixel intersection / union")
+    print("Counts          : " + json.dumps(totals, sort_keys=True))
+    print("Empty-denominator convention: 0; inspect Counts for empty predictions/GT")
+    return precision, recall, f1, iou
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate segmentation masks on the full image.")
-    parser.add_argument("--gt", type=str, required=True, help="Directory containing ground truth *_gt.png masks.")
-    parser.add_argument("--pred", type=str, required=True, help="Directory containing prediction *_pred.png masks.")
-    parser.add_argument("--vehicles", type=str, required=True, help="Directory containing *_vehicles.json files.")
-    parser.add_argument("--vis", type=str, default=None, help="Directory to save output visualisation RGB masks.")
-    parser.add_argument("--kernel", type=int, default=5, help="Kernel size for structural dilation (default: 5).")
-    parser.add_argument("--ppm", type=float, default=20.0, help="Pixels per meter used for BEV mapping (default: 20.0).")
-    
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Evaluate thin lane boundaries by Euclidean distance.')
+    parser.add_argument('--gt', required=True)
+    parser.add_argument('--pred', required=True)
+    parser.add_argument('--vehicles', required=True)
+    parser.add_argument('--vis', default=None)
+    parser.add_argument('--tolerance-m', type=float, default=0.1)
+    parser.add_argument('--ppm', type=float, default=33.0)
+    parser.add_argument('--kernel', type=int, default=None,
+                        help='Removed: use --tolerance-m instead')
     args = parser.parse_args()
-    
-    evaluate_and_visualize(
-        gt_dir=args.gt, 
-        pred_dir=args.pred, 
-        vehicles_dir=args.vehicles,
-        output_dir=args.vis, 
-        dilation_kernel=args.kernel,
-        ppm=args.ppm
-    )
+    if args.kernel is not None:
+        parser.error('--kernel was removed; use --tolerance-m 0.1')
+    evaluate_and_visualize(args.gt, args.pred, args.vehicles, args.vis,
+                           tolerance_m=args.tolerance_m, ppm=args.ppm)
